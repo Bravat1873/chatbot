@@ -1,0 +1,6 @@
+dashscope
+numpy
+pypinyin
+python-dotenv
+requests
+sounddevice
