@@ -1,7 +1,7 @@
 import unittest
 
-from dialogue import ADDRESS_ONLY_STEPS, DEFAULT_FLOW_STEPS
-from main import build_parser, select_steps
+from scripts.run_local import build_parser, select_steps
+from src.core.dialogue import ADDRESS_ONLY_STEPS, DEFAULT_FLOW_STEPS
 
 
 class MainTestCase(unittest.TestCase):

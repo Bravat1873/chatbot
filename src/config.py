@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 # 启动时自动加载项目根目录下的 .env，便于本地直接运行 demo。
 load_dotenv(BASE_DIR / ".env", override=False)
 
@@ -30,6 +30,14 @@ class Settings:
     llm_model: str = "qwen3.5-flash"
     tts_model: str = "cosyvoice-v3-flash"
     tts_voice: str = "longanyang"
+    aliyun_access_key_id: str = ""
+    aliyun_access_key_secret: str = ""
+    aiccs_app_code: str = ""
+    caller_number: str = ""
+    gateway_auth_token: str = ""
+    gateway_host: str = "0.0.0.0"
+    gateway_port: int = 8000
+    gateway_log_requests: bool = True
 
     # 录音与本地 VAD 参数
     sample_rate: int = 16_000
@@ -57,6 +65,14 @@ class Settings:
             asr_model=os.getenv("ASR_MODEL", "qwen3-asr-flash-realtime").strip(),
             llm_model=os.getenv("LLM_MODEL", "qwen3.5-flash").strip(),
             tts_model=os.getenv("TTS_MODEL", "cosyvoice-v3-flash").strip(),
+            aliyun_access_key_id=os.getenv("ALIYUN_ACCESS_KEY_ID", "").strip(),
+            aliyun_access_key_secret=os.getenv("ALIYUN_ACCESS_KEY_SECRET", "").strip(),
+            aiccs_app_code=os.getenv("AICCS_APP_CODE", "").strip(),
+            caller_number=os.getenv("CALLER_NUMBER", "").strip(),
+            gateway_auth_token=os.getenv("GATEWAY_AUTH_TOKEN", "").strip(),
+            gateway_host=os.getenv("GATEWAY_HOST", "0.0.0.0").strip(),
+            gateway_port=int(os.getenv("GATEWAY_PORT", "8000")),
+            gateway_log_requests=_get_bool("GATEWAY_LOG_REQUESTS", True),
             # TTS 配置
             tts_voice=os.getenv("TTS_VOICE", "longanyang").strip(),
             sample_rate=int(os.getenv("SAMPLE_RATE", "16000")),

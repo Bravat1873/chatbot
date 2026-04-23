@@ -1,7 +1,7 @@
 import unittest
 
-from geocode import AMapGeocoder
-from pinyin_utils import pinyin_distance
+from src.core.geocode import AMapGeocoder
+from src.core.pinyin_utils import pinyin_distance
 
 
 class GeocodeTestCase(unittest.TestCase):

@@ -7,8 +7,8 @@ from dashscope.api_entities.dashscope_response import (
     MultiModalConversationResponse,
 )
 
-from config import Settings
-from intent import IntentClassifier
+from src.config import Settings
+from src.core.intent import IntentClassifier
 
 
 class IntentTestCase(unittest.TestCase):

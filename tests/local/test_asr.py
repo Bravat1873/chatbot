@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import patch
 
-from asr import ASRClient
-from config import Settings
+from src.config import Settings
+from src.local.asr import ASRClient
 
 
 class ASRClientTestCase(unittest.TestCase):
@@ -46,8 +46,8 @@ class ASRClientTestCase(unittest.TestCase):
                 {"error": "boom", "session_finished": True},
             )
 
-    @patch("asr.sd")
-    @patch("asr.np")
+    @patch("src.local.asr.sd")
+    @patch("src.local.asr.np")
     def test_listen_once_times_out_without_speech(self, np_mock, sd_mock) -> None:
         class _FakeChunk:
             size = 1

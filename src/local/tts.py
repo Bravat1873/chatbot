@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from config import Settings
+from src.config import Settings
 
 try:
     import dashscope

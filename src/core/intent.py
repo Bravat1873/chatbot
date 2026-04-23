@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from config import Settings
+from src.config import Settings
 
 
 YES_HINTS = {
@@ -106,7 +106,8 @@ class IntentClassifier:
         try:
             return self._classify_with_llm(cleaned_text, context).to_dict()
         except Exception as exc:
-            print(f"[INTENT] LLM 调用失败，回退到启发式: {exc}")
+            if self.settings.debug:
+                print(f"[INTENT] LLM 调用失败，回退到启发式: {exc}")
             return self._heuristic_classify(cleaned_text, context).to_dict()
 
     def generate_address_confirmation_prompt(
@@ -132,7 +133,8 @@ class IntentClassifier:
                 focus_text=focus_text,
             )
         except Exception as exc:
-            print(f"[INTENT] 地址确认话术生成失败，回退到规则话术: {exc}")
+            if self.settings.debug:
+                print(f"[INTENT] 地址确认话术生成失败，回退到规则话术: {exc}")
             prompt = ""
 
         prompt = self._clean_confirmation_prompt(prompt)

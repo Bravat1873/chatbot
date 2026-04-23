@@ -3,14 +3,20 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
-from asr import ASRClient
-from config import get_settings
-from dialogue import ADDRESS_ONLY_STEPS, DEFAULT_FLOW_STEPS, DialogueEngine
-from geocode import AMapGeocoder
-from intent import IntentClassifier
-from tts import TTSClient
-from usage import UsageTracker
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.config import get_settings
+from src.core.dialogue import ADDRESS_ONLY_STEPS, DEFAULT_FLOW_STEPS, DialogueEngine
+from src.core.geocode import AMapGeocoder
+from src.core.intent import IntentClassifier
+from src.local.asr import ASRClient
+from src.local.tts import TTSClient
+from src.usage import UsageTracker
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="启用机器人语音播报，保留终端 print 的同时播放 TTS 音频。",
     )
     parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="演示模式：只显示对话内容，屏蔽所有调试和辅助信息。",
+    )
+    parser.add_argument(
         "--tts-voice",
         default=None,
         help="覆盖默认 TTS 音色，例如 longanyang。",
@@ -59,8 +70,9 @@ def main() -> int:
     args = parser.parse_args()
     settings = get_settings()
 
+    demo = args.demo
     overrides = {
-        "debug": not args.no_debug,
+        "debug": not args.no_debug and not demo,
     }
     if args.energy_threshold is not None:
         overrides["vad_energy_threshold"] = args.energy_threshold
@@ -72,7 +84,7 @@ def main() -> int:
     if not args.text_mode and not settings.dashscope_api_key:
         print(
             "未配置 DASHSCOPE_API_KEY，麦克风模式无法完成语音识别。"
-            "可先使用 `python main.py --text-mode` 联调状态机。",
+            "可先使用 `python scripts/run_local.py --text-mode` 联调状态机。",
             file=sys.stderr,
         )
         return 1
@@ -103,9 +115,9 @@ def main() -> int:
     )
 
     summary = engine.run()
-    # 保留结构化 JSON 输出，便于 demo 结束后直接展示“机器人记录了什么”。
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
-    tracker.print_summary()
+    if not demo:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        tracker.print_summary()
     return 0 if summary.get("status") == "completed" else 1
 
 

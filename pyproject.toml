@@ -5,9 +5,20 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "alibabacloud-aiccs20191015>=1.0.8",
+    "alibabacloud-tea-openapi>=0.4.1",
     "dashscope>=1.25.15",
     "dotenv>=0.9.9",
+    "fastapi>=0.116.1",
     "numpy>=2.4.3",
     "pypinyin>=0.54.0",
+    "requests>=2.32.5",
     "sounddevice>=0.5.5",
+    "uvicorn[standard]>=0.35.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.2",
 ]

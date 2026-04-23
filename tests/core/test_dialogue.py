@@ -2,11 +2,19 @@ import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 
-from asr import ASRClient
-from config import Settings
-from dialogue import ADDRESS_ONLY_STEPS, DEFAULT_FLOW_STEPS, DialogueEngine
-from geocode import AMapGeocoder
-from intent import IntentClassifier
+from src.config import Settings
+from src.core.dialogue import (
+    ADDRESS_ONLY_STEPS,
+    DEFAULT_FLOW_STEPS,
+    ADDRESS_RETRY_PROMPT,
+    END_MESSAGE,
+    TIMEOUT_END_MESSAGE,
+    TIMEOUT_RETRY_PROMPT,
+    DialogueEngine,
+)
+from src.core.geocode import AMapGeocoder
+from src.core.intent import IntentClassifier
+from src.local.asr import ASRClient
 
 
 class FakeGeocoder(AMapGeocoder):
@@ -92,54 +100,93 @@ class DialogueEngineTestCase(unittest.TestCase):
             debug=False,
         )
 
-    def test_happy_path_in_text_mode(self) -> None:
-        inputs = iter(
-            [
-                "有的，已经预约了",
-                "满意，已经解决了",
-            ]
-        )
-        engine = DialogueEngine(
-            asr_client=ASRClient(self.settings),
+    def make_engine(self, **kwargs) -> DialogueEngine:
+        return DialogueEngine(
             intent_classifier=IntentClassifier(self.settings, use_llm=False),
             geocoder=FakeGeocoder(self.settings),
-            input_mode="text",
             debug=False,
-            input_func=lambda _: next(inputs),
-            steps=DEFAULT_FLOW_STEPS,
+            **kwargs,
         )
 
-        summary = engine.run()
+    def test_process_turn_happy_path(self) -> None:
+        engine = self.make_engine(steps=DEFAULT_FLOW_STEPS)
 
-        self.assertEqual(summary["status"], "completed")
-        self.assertEqual(summary["results"]["appointment_confirmed"]["intent"], "yes")
-        self.assertEqual(summary["results"]["service_satisfied"]["intent"], "yes")
-        self.assertNotIn("address", summary["results"])
+        first_reply = engine.process_turn("session-1", "")
+        second_reply = engine.process_turn("session-1", "有的，已经预约了")
+        final_reply = engine.process_turn("session-1", "满意，已经解决了")
 
-    def test_timeout_and_address_retry(self) -> None:
-        inputs = iter(
-            [
-                "",
-                "还没呢",
-                "满意",
-            ]
-        )
-        engine = DialogueEngine(
-            asr_client=ASRClient(self.settings),
-            intent_classifier=IntentClassifier(self.settings, use_llm=False),
-            geocoder=FakeGeocoder(self.settings),
-            input_mode="text",
-            debug=False,
-            input_func=lambda _: next(inputs),
-            steps=DEFAULT_FLOW_STEPS,
-        )
+        state = engine.session_manager.get_or_create("session-1")
 
-        summary = engine.run()
+        self.assertEqual(first_reply, DEFAULT_FLOW_STEPS[0].question)
+        self.assertIn("好的，已经为您记录。", second_reply)
+        self.assertIn(DEFAULT_FLOW_STEPS[1].question, second_reply)
+        self.assertIn("好的，记录到您比较满意。", final_reply)
+        self.assertIn(END_MESSAGE, final_reply)
+        self.assertEqual(state.status, "completed")
+        self.assertEqual(state.results["appointment_confirmed"]["intent"], "yes")
+        self.assertEqual(state.results["service_satisfied"]["intent"], "yes")
 
-        self.assertEqual(summary["status"], "completed")
-        self.assertEqual(summary["results"]["appointment_confirmed"]["intent"], "no")
-        self.assertEqual(summary["results"]["service_satisfied"]["intent"], "yes")
-        self.assertNotIn("address", summary["results"])
+    def test_process_turn_stores_biz_params_on_session(self) -> None:
+        engine = self.make_engine(steps=DEFAULT_FLOW_STEPS)
+
+        engine.process_turn("session-biz", "", biz_params={"customer_name": "张三", "order_id": "BL-001"})
+
+        state = engine.session_manager.get_or_create("session-biz")
+
+        self.assertEqual(state.biz_params, {"customer_name": "张三", "order_id": "BL-001"})
+
+    def test_process_turn_handles_silence_then_termination(self) -> None:
+        engine = self.make_engine(steps=DEFAULT_FLOW_STEPS)
+
+        engine.process_turn("session-2", "")
+        retry_reply = engine.process_turn("session-2", "用户没有说话")
+        final_reply = engine.process_turn("session-2", "用户没有说话")
+
+        state = engine.session_manager.get_or_create("session-2")
+
+        self.assertEqual(retry_reply, TIMEOUT_RETRY_PROMPT)
+        self.assertEqual(final_reply, TIMEOUT_END_MESSAGE)
+        self.assertTrue(state.finished)
+        self.assertEqual(state.status, "terminated")
+        self.assertEqual(state.results["appointment_confirmed"]["status"], "timeout")
+
+    def test_address_confirmation_is_non_blocking(self) -> None:
+        engine = self.make_engine(steps=ADDRESS_ONLY_STEPS)
+
+        first_reply = engine.process_turn("session-3", "")
+        confirm_reply = engine.process_turn("session-3", "广州海珠区轮头村八二路小家公寓")
+        final_reply = engine.process_turn("session-3", "是的")
+
+        state = engine.session_manager.get_or_create("session-3")
+
+        self.assertEqual(first_reply, ADDRESS_ONLY_STEPS[0].question)
+        self.assertIn("小家公寓", confirm_reply)
+        self.assertIn("仑头村仑头路82号", confirm_reply)
+        self.assertFalse(state.awaiting_address_confirm)
+        self.assertIn(END_MESSAGE, final_reply)
+        self.assertEqual(state.results["address"]["status"], "ok")
+        self.assertEqual(state.results["address"]["place"]["name"], "小家公寓")
+
+    def test_address_confirmation_rejection_retries_address(self) -> None:
+        engine = self.make_engine(steps=ADDRESS_ONLY_STEPS)
+
+        engine.process_turn("session-4", "")
+        engine.process_turn("session-4", "广州海珠区轮头村八二路小家公寓")
+        retry_reply = engine.process_turn("session-4", "不是")
+
+        state = engine.session_manager.get_or_create("session-4")
+
+        self.assertEqual(retry_reply, ADDRESS_RETRY_PROMPT)
+        self.assertEqual(state.address_retries, 1)
+        self.assertFalse(state.awaiting_address_confirm)
+
+    def test_process_turn_returns_end_message_after_finish(self) -> None:
+        engine = self.make_engine(steps=(DEFAULT_FLOW_STEPS[0],))
+
+        engine.process_turn("session-5", "")
+        engine.process_turn("session-5", "有的，已经预约了")
+
+        self.assertEqual(engine.process_turn("session-5", "继续"), END_MESSAGE)
 
     def test_service_satisfied_reply_is_customized(self) -> None:
         self.assertEqual(
@@ -151,63 +198,13 @@ class DialogueEngineTestCase(unittest.TestCase):
             "抱歉，给您造成了不愉快的体验。",
         )
 
-    def test_happy_path_prints_custom_satisfaction_reply(self) -> None:
-        inputs = iter(
-            [
-                "有的，已经预约了",
-                "满意，已经解决了",
-            ]
-        )
-        engine = DialogueEngine(
-            asr_client=ASRClient(self.settings),
-            intent_classifier=IntentClassifier(self.settings, use_llm=False),
-            geocoder=FakeGeocoder(self.settings),
-            input_mode="text",
-            debug=False,
-            input_func=lambda _: next(inputs),
-            steps=DEFAULT_FLOW_STEPS,
-        )
-
-        output = StringIO()
-        with redirect_stdout(output):
-            engine.run()
-
-        self.assertIn("好的，记录到您比较满意。", output.getvalue())
-
-    def test_address_only_flow_runs_only_address_question(self) -> None:
-        inputs = iter(
-            [
-                "北京市朝阳区建国路88号SOHO现代城",
-                "是的",
-            ]
-        )
-        engine = DialogueEngine(
-            asr_client=ASRClient(self.settings),
-            intent_classifier=IntentClassifier(self.settings, use_llm=False),
-            geocoder=FakeGeocoder(self.settings),
-            input_mode="text",
-            debug=False,
-            input_func=lambda _: next(inputs),
-            steps=ADDRESS_ONLY_STEPS,
-        )
-
-        summary = engine.run()
-
-        self.assertEqual(summary["status"], "completed")
-        self.assertEqual(set(summary["results"]), {"address"})
-        self.assertEqual(summary["results"]["address"]["status"], "ok")
-
     def test_say_prints_and_invokes_speaker(self) -> None:
         speaker = FakeSpeaker()
-        engine = DialogueEngine(
+        engine = self.make_engine(
             asr_client=ASRClient(self.settings),
-            intent_classifier=IntentClassifier(self.settings, use_llm=False),
-            geocoder=FakeGeocoder(self.settings),
             input_mode="text",
-            debug=False,
             input_func=lambda _: "",
             speaker=speaker,
-            steps=DEFAULT_FLOW_STEPS,
         )
 
         output = StringIO()
@@ -217,31 +214,34 @@ class DialogueEngineTestCase(unittest.TestCase):
         self.assertIn("机器人：测试播报", output.getvalue())
         self.assertEqual(speaker.spoken, ["测试播报"])
 
-    def test_address_flow_confirms_corrected_candidate(self) -> None:
-        inputs = iter(
-            [
-                "广州海珠区轮头村八二路小家公寓",
-                "是的",
-            ]
-        )
-        engine = DialogueEngine(
+    def test_run_in_text_mode(self) -> None:
+        inputs = iter(["有的，已经预约了", "满意，已经解决了"])
+        engine = self.make_engine(
             asr_client=ASRClient(self.settings),
-            intent_classifier=IntentClassifier(self.settings, use_llm=False),
-            geocoder=FakeGeocoder(self.settings),
             input_mode="text",
-            debug=False,
             input_func=lambda _: next(inputs),
-            steps=ADDRESS_ONLY_STEPS,
+            steps=DEFAULT_FLOW_STEPS,
         )
 
-        output = StringIO()
-        with redirect_stdout(output):
-            summary = engine.run()
+        summary = engine.run()
 
         self.assertEqual(summary["status"], "completed")
-        self.assertEqual(summary["results"]["address"]["status"], "ok")
-        self.assertIn("小家公寓", output.getvalue())
-        self.assertIn("仑头村仑头路82号", output.getvalue())
+        self.assertEqual(summary["results"]["appointment_confirmed"]["intent"], "yes")
+        self.assertEqual(summary["results"]["service_satisfied"]["intent"], "yes")
+
+    def test_microphone_mode_uses_streaming_asr(self) -> None:
+        asr_client = FakeStreamingASRClient()
+        engine = self.make_engine(
+            asr_client=asr_client,  # type: ignore[arg-type]
+            input_mode="microphone",
+            steps=(DEFAULT_FLOW_STEPS[0],),
+        )
+
+        summary = engine.run()
+
+        self.assertTrue(asr_client.called)
+        self.assertEqual(summary["status"], "completed")
+        self.assertEqual(summary["results"]["appointment_confirmed"]["intent"], "yes")
 
     def test_address_confirmation_ignores_admin_region_prefix(self) -> None:
         prompt = DialogueEngine._build_address_confirmation_prompt(
@@ -269,23 +269,6 @@ class DialogueEngineTestCase(unittest.TestCase):
 
         self.assertIn("贝朗(中国)卫浴有限公司", prompt)
         self.assertIn("琶洲大道东1号保利国际广场", prompt)
-
-    def test_microphone_mode_uses_streaming_asr(self) -> None:
-        asr_client = FakeStreamingASRClient()
-        engine = DialogueEngine(
-            asr_client=asr_client,  # type: ignore[arg-type]
-            intent_classifier=IntentClassifier(self.settings, use_llm=False),
-            geocoder=FakeGeocoder(self.settings),
-            input_mode="microphone",
-            debug=False,
-            steps=(DEFAULT_FLOW_STEPS[0],),
-        )
-
-        summary = engine.run()
-
-        self.assertTrue(asr_client.called)
-        self.assertEqual(summary["status"], "completed")
-        self.assertEqual(summary["results"]["appointment_confirmed"]["intent"], "yes")
 
 
 if __name__ == "__main__":

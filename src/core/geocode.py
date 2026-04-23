@@ -7,8 +7,8 @@ from typing import Any
 
 import requests
 
-from config import Settings
-from pinyin_utils import normalize_text, pinyin_distance
+from src.config import Settings
+from src.core.pinyin_utils import normalize_text, pinyin_distance
 
 
 PRECISE_LEVEL_KEYWORDS = {

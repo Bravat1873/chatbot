@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+.venv
+venv
+__pycache__
+.pytest_cache
+.coverage
+htmlcov
+.DS_Store
+.ace-tool
+.claude
+tests
+docs
