@@ -63,6 +63,7 @@ type SessionState struct {
 type DialogueEngine struct {
 	mu                sync.Mutex
 	sessions          map[string]*SessionState
+	sessionLocks      map[string]*sync.Mutex
 	classifier        IntentClassifier
 	geocoder          Geocoder
 	steps             []DialogueStep
@@ -84,6 +85,7 @@ func NewDialogueEngine(classifier IntentClassifier, steps []DialogueStep, geocod
 	}
 	return &DialogueEngine{
 		sessions:          make(map[string]*SessionState),
+		sessionLocks:      make(map[string]*sync.Mutex),
 		classifier:        classifier,
 		geocoder:          geocoder,
 		steps:             append([]DialogueStep(nil), steps...),
@@ -94,8 +96,9 @@ func NewDialogueEngine(classifier IntentClassifier, steps []DialogueStep, geocod
 }
 
 func (e *DialogueEngine) ProcessTurn(ctx context.Context, sessionID string, userText string, bizParams map[string]any) (string, string, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	sessionLock := e.lockForSession(sessionID)
+	sessionLock.Lock()
+	defer sessionLock.Unlock()
 
 	state := e.getOrCreate(sessionID)
 	if bizParams != nil {
@@ -149,6 +152,10 @@ func (e *DialogueEngine) ProcessTurn(ctx context.Context, sessionID string, user
 }
 
 func (e *DialogueEngine) Snapshot(sessionID string) *SessionState {
+	sessionLock := e.lockForSession(sessionID)
+	sessionLock.Lock()
+	defer sessionLock.Unlock()
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	state := e.sessions[sessionID]
@@ -159,7 +166,23 @@ func (e *DialogueEngine) Snapshot(sessionID string) *SessionState {
 	return &copied
 }
 
+func (e *DialogueEngine) lockForSession(sessionID string) *sync.Mutex {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.sessionLocks == nil {
+		e.sessionLocks = make(map[string]*sync.Mutex)
+	}
+	lock := e.sessionLocks[sessionID]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		e.sessionLocks[sessionID] = lock
+	}
+	return lock
+}
+
 func (e *DialogueEngine) getOrCreate(sessionID string) *SessionState {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	if state, ok := e.sessions[sessionID]; ok {
 		return state
 	}

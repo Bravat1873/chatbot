@@ -11,6 +11,8 @@ import (
 	"chatbot/internal/core"
 )
 
+const defaultVerifyCandidateLimit = 3
+
 type Config struct {
 	APIKey  string
 	BaseURL string
@@ -22,6 +24,7 @@ type Client struct {
 	apiKey     string
 	baseURL    string
 	city       string
+	timeout    time.Duration
 	httpClient *http.Client
 }
 
@@ -38,6 +41,7 @@ func New(config Config) *Client {
 		apiKey:  strings.TrimSpace(config.APIKey),
 		baseURL: baseURL,
 		city:    strings.TrimSpace(config.City),
+		timeout: timeout,
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
@@ -49,16 +53,20 @@ func (c *Client) ResolvePlace(ctx context.Context, keywords string) (core.Geocod
 	if cleaned == "" {
 		return core.GeocodeResult{Found: false, Error: "地址关键词为空"}, nil
 	}
-	tipsResult, tipsErr := c.GetInputTips(ctx, cleaned)
-	poisResult, poisErr := c.SearchPlace(ctx, cleaned)
+	resolveCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	tipsResult, tipsErr := c.GetInputTips(resolveCtx, cleaned)
+	poisResult, poisErr := c.SearchPlace(resolveCtx, cleaned)
 	if sharedError := pickSharedError(tipsResult.Error, poisResult.Error); sharedError != "" {
 		return core.GeocodeResult{Found: false, Error: sharedError}, nil
 	}
 	if tipsErr != nil && poisErr != nil {
 		return core.GeocodeResult{}, fmt.Errorf("amap resolve failed: inputtips=%w; poi=%v", tipsErr, poisErr)
 	}
-	candidates := core.MergePlaceCandidates(cleaned, tipsResult.Tips, poisResult.POIs, c.city, func(text string, city string) core.AddressVerifyResult {
-		result, err := c.VerifyAddress(ctx, text)
+	tipsForVerify, poisForVerify := limitCandidatesForVerify(tipsResult.Tips, poisResult.POIs, defaultVerifyCandidateLimit)
+	candidates := core.MergePlaceCandidates(cleaned, tipsForVerify, poisForVerify, c.city, func(text string, city string) core.AddressVerifyResult {
+		result, err := c.VerifyAddress(resolveCtx, text)
 		if err != nil {
 			return core.AddressVerifyResult{Success: false, Error: err.Error()}
 		}
@@ -80,6 +88,16 @@ func (c *Client) ResolvePlace(ctx context.Context, keywords string) (core.Geocod
 		Tips:       tipsResult.Tips,
 		POIs:       poisResult.POIs,
 	}, nil
+}
+
+func limitCandidatesForVerify(tips []core.PlaceCandidate, pois []core.PlaceCandidate, limit int) ([]core.PlaceCandidate, []core.PlaceCandidate) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	tipsLimit := min(len(tips), limit)
+	remaining := limit - tipsLimit
+	poisLimit := min(len(pois), max(remaining, 0))
+	return append([]core.PlaceCandidate(nil), tips[:tipsLimit]...), append([]core.PlaceCandidate(nil), pois[:poisLimit]...)
 }
 
 func (c *Client) VerifyAddress(ctx context.Context, addressText string) (core.AddressVerifyResult, error) {

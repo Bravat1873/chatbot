@@ -66,3 +66,71 @@ func TestResolvePlaceReturnsUnconfiguredError(t *testing.T) {
 		t.Fatalf("unexpected error: %#v", result)
 	}
 }
+
+func TestResolvePlaceCapsCandidateVerification(t *testing.T) {
+	geocodeCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/assistant/inputtips":
+			_, _ = w.Write([]byte(`{"status":"1","info":"OK","tips":[` +
+				`{"name":"地点1","address":"地址1号","district":"海珠区"},` +
+				`{"name":"地点2","address":"地址2号","district":"海珠区"},` +
+				`{"name":"地点3","address":"地址3号","district":"海珠区"},` +
+				`{"name":"地点4","address":"地址4号","district":"海珠区"},` +
+				`{"name":"地点5","address":"地址5号","district":"海珠区"}` +
+				`]}`))
+		case "/place/text":
+			_, _ = w.Write([]byte(`{"status":"1","info":"OK","pois":[` +
+				`{"name":"地点6","address":"地址6号","adname":"海珠区"},` +
+				`{"name":"地点7","address":"地址7号","adname":"海珠区"},` +
+				`{"name":"地点8","address":"地址8号","adname":"海珠区"}` +
+				`]}`))
+		case "/geocode/geo":
+			geocodeCalls++
+			_, _ = w.Write([]byte(`{"status":"1","info":"OK","geocodes":[{"formatted_address":"广东省广州市海珠区地址1号地点1","level":"兴趣点"}]}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		APIKey:  "amap-key",
+		BaseURL: server.URL,
+		Timeout: time.Second,
+	})
+	result, err := client.ResolvePlace(context.Background(), "地点")
+	if err != nil {
+		t.Fatalf("resolve place: %v", err)
+	}
+
+	if !result.Found {
+		t.Fatalf("expected found result: %#v", result)
+	}
+	if geocodeCalls != defaultVerifyCandidateLimit {
+		t.Fatalf("expected %d geocode calls, got %d", defaultVerifyCandidateLimit, geocodeCalls)
+	}
+}
+
+func TestResolvePlaceHonorsTotalTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		_, _ = w.Write([]byte(`{"status":"1","info":"OK"}`))
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		APIKey:  "amap-key",
+		BaseURL: server.URL,
+		Timeout: 20 * time.Millisecond,
+	})
+	startedAt := time.Now()
+	_, err := client.ResolvePlace(context.Background(), "小家公寓")
+	elapsed := time.Since(startedAt)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if elapsed > 150*time.Millisecond {
+		t.Fatalf("resolve should honor total timeout, elapsed=%s", elapsed)
+	}
+}

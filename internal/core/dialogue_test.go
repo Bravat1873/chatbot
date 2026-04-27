@@ -3,7 +3,9 @@ package core
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestDialogueEngineHappyPath(t *testing.T) {
@@ -136,4 +138,51 @@ func TestDialogueEngineAddressConfirmation(t *testing.T) {
 	if !strings.Contains(finalReply, EndMessage) || state.Results["address"]["status"] != "ok" {
 		t.Fatalf("unexpected final state reply=%q state=%#v", finalReply, state)
 	}
+}
+
+type blockingClassifier struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (c *blockingClassifier) Classify(ctx context.Context, text string, intentContext IntentContext) (IntentResult, error) {
+	_ = ctx
+	_ = text
+	_ = intentContext
+	c.started <- struct{}{}
+	<-c.release
+	return IntentResult{Intent: "yes", Source: "test"}, nil
+}
+
+func (c *blockingClassifier) GenerateAddressConfirmation(ctx context.Context, input AddressConfirmationInput) (string, error) {
+	_ = ctx
+	return input.FallbackPrompt, nil
+}
+
+func TestDialogueEngineDoesNotSerializeDifferentSessions(t *testing.T) {
+	classifier := &blockingClassifier{
+		started: make(chan struct{}, 2),
+		release: make(chan struct{}),
+	}
+	engine := NewDialogueEngine(classifier, []DialogueStep{DefaultSteps[0]})
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for _, sessionID := range []string{"session-a", "session-b"} {
+		go func(sessionID string) {
+			defer wg.Done()
+			_, _, _ = engine.ProcessTurn(context.Background(), sessionID, "当然", nil)
+		}(sessionID)
+	}
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-classifier.started:
+		case <-time.After(200 * time.Millisecond):
+			close(classifier.release)
+			t.Fatal("different sessions should not wait on one global dialogue lock")
+		}
+	}
+	close(classifier.release)
+	wg.Wait()
 }
