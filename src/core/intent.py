@@ -1,3 +1,5 @@
+# 意图分类器：LLM 驱动 + 启发式规则兜底，支持 yes/no/address/unclear 四类意图。
+
 from __future__ import annotations
 
 import json
@@ -9,6 +11,7 @@ from typing import Any
 from src.config import Settings
 
 
+# === 启发式规则词库 ===
 YES_HINTS = {
     "有",
     "有的",
@@ -67,6 +70,7 @@ UNCLEAR_HINTS = {"啊", "哈", "喂", "你说什么", "什么意思", "没听清
 
 @dataclass
 class IntentResult:
+    """意图分类结果。"""
     intent: str
     address: str = ""
     confidence: str = "medium"
@@ -84,12 +88,19 @@ class IntentResult:
 
 
 class IntentClassifier:
+    """
+    意图分类器。
+    - 优先使用 LLM 分类（qwen3.5-flash）
+    - LLM 不可用时回退到启发式规则
+    - 支持生成地址确认话术（同样优先 LLM）
+    """
     def __init__(self, settings: Settings, use_llm: bool = True, tracker: Any = None) -> None:
         self.settings = settings
         self.use_llm = use_llm
         self.tracker = tracker
 
     def classify(self, text: str, context: dict[str, Any]) -> dict[str, str]:
+        """分类用户输入，优先 LLM，不可用时回退启发式。"""
         cleaned_text = text.strip()
         if not cleaned_text:
             return IntentResult(
@@ -119,6 +130,7 @@ class IntentClassifier:
         focus_text: str = "",
         fallback_prompt: str = "",
     ) -> str:
+        """生成地址确认话术，优先 LLM，失败时回退到规则模板。"""
         if not self.use_llm or not self.settings.dashscope_api_key:
             return fallback_prompt or self._fallback_address_prompt(
                 focus_text or matched_text,
@@ -151,7 +163,9 @@ class IntentClassifier:
             matched_name=matched_name,
         )
 
+    # === LLM 调用 ===
     def _classify_with_llm(self, text: str, context: dict[str, Any]) -> IntentResult:
+        """调用 DashScope LLM 进行意图分类。"""
         os.environ["DASHSCOPE_API_KEY"] = self.settings.dashscope_api_key
 
         expected = context.get("expected_intent", "generic")
@@ -358,7 +372,9 @@ class IntentClassifier:
         normalized = model.strip().lower()
         return normalized.startswith("qwen3.5")
 
+    # === 启发式规则 ===
     def _heuristic_classify(self, text: str, context: dict[str, Any]) -> IntentResult:
+        """启发式意图分类：关键词匹配 + 否定感知。"""
         normalized = re.sub(r"\s+", "", text)
 
         if self._looks_unclear(normalized):

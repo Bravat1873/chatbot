@@ -23,35 +23,37 @@ def _get_bool(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    # 外部服务配置
-    dashscope_api_key: str
-    amap_key: str
-    asr_model: str = "qwen3-asr-flash-realtime"
-    llm_model: str = "qwen3.5-flash"
-    tts_model: str = "cosyvoice-v3-flash"
-    tts_voice: str = "longanyang"
-    aliyun_access_key_id: str = ""
-    aliyun_access_key_secret: str = ""
-    aiccs_app_code: str = ""
-    caller_number: str = ""
-    gateway_auth_token: str = ""
-    gateway_host: str = "0.0.0.0"
-    gateway_port: int = 8000
-    gateway_log_requests: bool = True
+    """不可变配置类，所有参数从环境变量装配，支持局部覆盖。"""
 
-    # 录音与本地 VAD 参数
-    sample_rate: int = 16_000
-    channels: int = 1
-    chunk_ms: int = 100
-    vad_energy_threshold: float = 700.0
-    vad_end_silence_seconds: float = 1.0
-    vad_no_response_seconds: float = 8.0
-    max_record_seconds: float = 30.0
-    debug: bool = True
-    default_city: str = "广州"
-    tts_format: str = "mp3"
-    tts_sample_rate: int = 24_000
-    tts_timeout_seconds: float = 20.0
+    # === 外部服务配置 ===
+    dashscope_api_key: str      # 阿里云 DashScope（百炼）API Key
+    amap_key: str               # 高德地图 API Key
+    asr_model: str = "qwen3-asr-flash-realtime"   # 语音识别模型
+    llm_model: str = "qwen3.5-flash"              # 意图分类用大模型
+    tts_model: str = "cosyvoice-v3-flash"          # 语音合成模型
+    tts_voice: str = "longanyang"                   # TTS 默认音色
+    aliyun_access_key_id: str = ""                  # 阿里云 AK（AICCS 外呼使用）
+    aliyun_access_key_secret: str = ""             # 阿里云 SK
+    aiccs_app_code: str = ""                        # AICCS 应用 Code
+    caller_number: str = ""                         # 主叫号码
+    gateway_auth_token: str = ""                    # Gateway 鉴权 Token
+    gateway_host: str = "0.0.0.0"                   # Gateway 监听地址
+    gateway_port: int = 8000                        # Gateway 监听端口
+    gateway_log_requests: bool = True               # 是否记录请求日志
+
+    # === 录音与本地 VAD 参数 ===
+    sample_rate: int = 16_000                       # 采样率
+    channels: int = 1                               # 声道数（实时 ASR 仅支持单声道）
+    chunk_ms: int = 100                             # 每次读取音频的毫秒数
+    vad_energy_threshold: float = 700.0             # VAD 能量阈值
+    vad_end_silence_seconds: float = 1.0            # 连续静音多久认为说话结束
+    vad_no_response_seconds: float = 8.0            # 多久无回应当超时
+    max_record_seconds: float = 30.0                # 单次录音最大秒数
+    debug: bool = True                              # 调试模式，打印中间结果
+    default_city: str = "广州"                       # 高德地理编码默认城市
+    tts_format: str = "mp3"                         # TTS 音频格式
+    tts_sample_rate: int = 24_000                   # TTS 采样率
+    tts_timeout_seconds: float = 20.0               # TTS 合成超时
 
     @classmethod
     def from_env(cls) -> "Settings":

@@ -1,3 +1,5 @@
+# 语音识别客户端：本地 VAD（声音活动检测）+ 云端 DashScope 实时 ASR，返回转写文本。
+
 from __future__ import annotations
 
 import base64
@@ -26,6 +28,7 @@ except ImportError:  # pragma: no cover - exercised only when dependency is abse
 
 @dataclass
 class AudioCaptureResult:
+    """录音结果：包含原始 PCM、时长、是否检测到人声等。"""
     audio_bytes: bytes
     sample_rate: int
     duration_seconds: float
@@ -39,11 +42,20 @@ class AudioCaptureResult:
 
 
 class ASRClient:
+    """
+    语音识别客户端。
+    - listen_once: 麦克风录音 + 流式 ASR，返回转写结果
+    - record_audio + transcribe: 离线场景的先录后转模式
+    """
     def __init__(self, settings: Settings, tracker: Any = None) -> None:
         self.settings = settings
         self.tracker = tracker
 
     def listen_once(self) -> dict[str, Any]:
+        """
+        流式录音+识别：边采音频边推流到云端，静音达到阈值后结束识别。
+        返回 {"timed_out": bool, "text": str}。
+        """
         # 轻量流式：仍然保持“一问一答”，但录音时就持续把音频分片推给云端 ASR，
         # 避免“本地录完一整段后再上传”带来的额外等待。
         self._validate_audio_settings()

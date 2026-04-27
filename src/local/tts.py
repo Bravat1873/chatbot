@@ -1,3 +1,5 @@
+# 语音合成客户端：调用 DashScope TTS API 生成音频，并调用系统播放器播放。
+
 from __future__ import annotations
 
 import shutil
@@ -21,11 +23,17 @@ except ImportError:  # pragma: no cover - exercised only when dependency is abse
 
 
 class TTSClient:
+    """
+    语音合成客户端。
+    - 调用 DashScope CosyVoice API 生成音频文件
+    - 自动检测系统播放器（afplay/ffplay/mpg123/aplay）播放
+    """
     def __init__(self, settings: Settings, tracker: Any = None) -> None:
         self.settings = settings
         self.tracker = tracker
 
     def speak(self, text: str) -> None:
+        """同步合成并播放语音（阻塞）。"""
         # TTS 仍然保持同步播放，确保 demo 中“机器人说完再轮到用户”。
         cleaned = text.strip()
         if not cleaned:
@@ -38,6 +46,7 @@ class TTSClient:
             audio_path.unlink(missing_ok=True)
 
     def _synthesize_to_file(self, text: str) -> Path:
+        """调用 DashScope TTS API，将文本合成为音频文件并返回路径。"""
         if not self.settings.dashscope_api_key:
             raise RuntimeError("未配置 DASHSCOPE_API_KEY，无法调用语音合成。")
         if dashscope is None or SpeechSynthesizer is None:
@@ -104,6 +113,7 @@ class TTSClient:
         return audio_path
 
     def _play_audio(self, audio_path: Path) -> None:
+        """使用系统播放器播放音频文件。"""
         command = self._build_play_command(audio_path)
         if command is None:
             raise RuntimeError(
@@ -138,6 +148,7 @@ class TTSClient:
         return None
 
     def _resolve_audio_format(self):
+        """根据配置解析 DashScope AudioFormat 枚举值。"""
         if AudioFormat is None:
             raise RuntimeError("当前 dashscope SDK 不支持 AudioFormat，无法初始化 TTS。")
 

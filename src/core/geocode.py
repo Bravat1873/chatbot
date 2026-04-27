@@ -26,6 +26,7 @@ BROAD_LEVEL_KEYWORDS = {"国家", "省", "市", "区县", "开发区", "乡镇"}
 
 @dataclass
 class GeocodeResult:
+    """高德地理编码返回的标准结构。"""
     success: bool
     formatted: str = ""
     level: str = ""
@@ -47,6 +48,11 @@ class GeocodeResult:
 
 
 class AMapGeocoder:
+    """
+    高德地图 API 封装。
+    提供：verify_address 地理编码、search_place POI 搜索、
+    get_input_tips 输入联想、resolve_place 多路合并。
+    """
     api_url = "https://restapi.amap.com/v3/geocode/geo"
     inputtips_url = "https://restapi.amap.com/v3/assistant/inputtips"
     place_search_url = "https://restapi.amap.com/v3/place/text"
@@ -56,23 +62,24 @@ class AMapGeocoder:
         self.timeout = timeout
 
     def verify_address(self, address_text: str, city: str | None = None) -> dict[str, Any]:
+        """调用高德地理编码 API，将文本地址转为标准化结构。"""
         cleaned_text = address_text.strip()
         if not cleaned_text:
             return GeocodeResult(
                 success=False,
-                error="地址为空，无法复核。",
+                error="地址为空,无法复核。",
             ).to_dict()
 
         if not self.settings.amap_key:
             return GeocodeResult(
                 success=False,
-                error="未配置 AMAP_KEY，无法调用高德地址复核。",
+                error="未配置 AMAP_KEY,无法调用高德地址复核。",
             ).to_dict()
 
         if not requests:
             return GeocodeResult(
                 success=False,
-                error="未安装 requests，无法调用高德地址复核。",
+                error="未安装 requests,无法调用高德地址复核。",
             ).to_dict()
 
         try:
@@ -109,7 +116,7 @@ class AMapGeocoder:
         if not geocodes:
             return GeocodeResult(
                 success=False,
-                error="未匹配到有效地址，请补充更详细的门牌信息。",
+                error="未匹配到有效地址,请补充更详细的门牌信息。",
                 raw=payload,
             ).to_dict()
 
@@ -117,7 +124,7 @@ class AMapGeocoder:
         formatted = first_result.get("formatted_address", "")
         level = first_result.get("level", "")
         location = first_result.get("location", "")
-        # level 是高德返回的精度等级，结合标准化地址决定是否继续追问。
+        # level 是高德返回的精度等级,结合标准化地址决定是否继续追问。
         precision_ok = self.is_precise_enough(level, formatted)
 
         return GeocodeResult(
@@ -130,7 +137,7 @@ class AMapGeocoder:
         ).to_dict()
 
     def get_input_tips(self, keywords: str, city: str | None = None) -> dict[str, Any]:
-        # InputTips 偏“联想/纠错”，适合处理 ASR 把“龙吟”听成“龙影”这类情况。
+        """高德输入提示：适合处理 ASR 同音错字场景的地址纠错/联想。"""
         city = city or self.settings.default_city
         cleaned = keywords.strip()
         if not cleaned:
@@ -187,7 +194,7 @@ class AMapGeocoder:
         return {"found": bool(results), "tips": results, "raw": payload}
 
     def search_place(self, query: str, city: str | None = None) -> dict[str, Any]:
-        # POI 搜索偏“找明确地点/公司/门店”，和 InputTips 的能力互补。
+        """高德 POI 搜索，查找明确地点（公司/门店/小区等）。"""
         city = city or self.settings.default_city
         cleaned = query.strip()
         if not cleaned:
@@ -245,8 +252,7 @@ class AMapGeocoder:
         return {"found": True, "pois": results, "raw": payload}
 
     def resolve_place(self, query: str, city: str | None = None) -> dict[str, Any]:
-        # 这里的目标不是“只要高德给了结果就算成功”，
-        # 而是把多路候选统一拉平后，再做一轮更偏业务视角的筛选。
+        """综合地址解析入口：合并 InputTips 和 POI 结果，按自定义评分排序。"""
         city = city or self.settings.default_city
         cleaned = query.strip()
         if not cleaned:
@@ -281,6 +287,7 @@ class AMapGeocoder:
             "pois": pois_result.get("pois", []),
         }
 
+    # === 候选合并与评分 ===
     def _merge_candidates(
         self,
         *,
@@ -312,7 +319,7 @@ class AMapGeocoder:
             ranked["precision_ok"] = bool(verify_result.get("precision_ok"))
             ranked["formatted"] = verify_result.get("formatted", "")
             ranked["compare_text"] = verify_result.get("formatted") or display_text
-            # 综合分表达“候选像不像用户说的目标地址”。
+            # 综合分表达"候选像不像用户说的目标地址"。
             ranked["score"] = self._candidate_score(ranked)
 
             existing = deduped.get(key)
@@ -323,7 +330,7 @@ class AMapGeocoder:
 
     @staticmethod
     def _candidate_rank_tuple(candidate: dict[str, Any]) -> tuple[int, int, int, int]:
-        # 分数一致时，再用精度、拼音距离、来源做稳定 tie-break。
+        """排序键：(分数, 精度, 拼音距离, 来源, 名称长度)，确保稳定排序。"""
         return (
             -int(candidate.get("score", 0)),
             0 if candidate.get("precision_ok") else 1,
@@ -334,8 +341,7 @@ class AMapGeocoder:
 
     @staticmethod
     def _candidate_score(candidate: dict[str, Any]) -> int:
-        # 这是经验分，不是严格概率：
-        # 命中数字、组织名、路名都会加分；拼音距离越大越扣分。
+        """经验评分：精度、相似度、数字匹配、组织名、路名各有权重。"""
         score = 0
         score += 30 if candidate.get("precision_ok") else 0
         score += int(candidate.get("similarity", 0.0) * 100)
@@ -348,7 +354,7 @@ class AMapGeocoder:
 
     @staticmethod
     def _pick_shared_error(*results: dict[str, Any]) -> str:
-        # 只有当所有底层链路都属于“根本不可用”时，才直接把错误抛给上层。
+        # 只有当所有底层链路都属于"根本不可用"时,才直接把错误抛给上层。
         errors = [result.get("error", "") for result in results if result.get("error")]
         if not errors:
             return ""
@@ -368,7 +374,7 @@ class AMapGeocoder:
 
     @staticmethod
     def _meaningful_query_text(text: str) -> str:
-        # 排序时弱化省/市/区/街道等公共前缀，让比对更关注真正区分地点的部分。
+        # 排序时弱化省/市/区/街道等公共前缀,让比对更关注真正区分地点的部分。
         raw = text.strip()
         if not raw:
             return ""
@@ -407,8 +413,8 @@ class AMapGeocoder:
 
     @staticmethod
     def _organization_core(text: str) -> str:
-        # “贝朗(中国)卫浴有限公司”这类名称先去壳，再比较核心词，降低后缀噪声。
-        cleaned = re.sub(r"[()（）]", "", text)
+        # "贝朗(中国)卫浴有限公司"这类名称先去壳,再比较核心词,降低后缀噪声。
+        cleaned = re.sub(r"[()()]", "", text)
         cleaned = re.sub(
             r"(有限责任公司|有限公司|公司|集团|店|中心|分店|分公司|营业部)$",
             "",
@@ -438,7 +444,7 @@ class AMapGeocoder:
 
     @classmethod
     def _road_match_score(cls, query: str, candidate: str) -> float:
-        # 路名比对允许轻微 ASR 误差，只要片段相近就算部分命中。
+        # 路名比对允许轻微 ASR 误差,只要片段相近就算部分命中。
         query_tokens = cls._extract_road_tokens(query)
         candidate_tokens = cls._extract_road_tokens(candidate)
         if not query_tokens:
@@ -457,13 +463,15 @@ class AMapGeocoder:
                 matched += 1
         return matched / max(len(query_tokens), 1)
 
+    # === 精度判断 ===
     @staticmethod
     def is_precise_enough(level: str, formatted_address: str = "") -> bool:
+        """判断地址精度是否足够（排除省市级模糊匹配）。"""
         if any(keyword in level for keyword in PRECISE_LEVEL_KEYWORDS):
             return True
         if any(keyword in level for keyword in BROAD_LEVEL_KEYWORDS):
             return False
 
-        # 某些返回的 level 不稳定时，退回到地址文本细粒度特征判断。
+        # 某些返回的 level 不稳定时,退回到地址文本细粒度特征判断。
         has_detail_number = any(token in formatted_address for token in {"号", "栋", "单元", "室"})
         return has_detail_number

@@ -1,9 +1,12 @@
+# 阿里云 AICCS 外呼封装：使用官方 Python SDK 发起大模型外呼并查询通话详情。
+
 from __future__ import annotations
 
 from src.config import get_settings
 
 
 def make_call(called_number: str) -> str:
+    """发起 LlmSmartCall 外呼，返回 CallId。"""
     settings = get_settings()
     try:
         from alibabacloud_aiccs20191015 import models as aiccs_models

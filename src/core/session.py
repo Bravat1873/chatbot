@@ -1,9 +1,12 @@
+# 会话管理：内存持有的对话状态（步骤指针、重试计数、结果暂存）。
+
 from dataclasses import dataclass, field
 from typing import Any
 
 
 @dataclass
 class SessionState:
+    """单次对话的全部状态，无外部持久化。"""
     step_index: int = 0
     unclear_retries: int = 0
     timeout_retries: int = 0
@@ -19,6 +22,7 @@ class SessionState:
 
 
 class SessionManager:
+    """简单的会话管理器：支持按 session_id 存取和删除状态。"""
     def __init__(self) -> None:
         self._sessions: dict[str, SessionState] = {}
 

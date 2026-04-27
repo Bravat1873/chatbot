@@ -1,8 +1,10 @@
+# API 用量统计：记录 LLM/ASR/TTS 调用次数与 Token 消耗，估算费用。
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-# 官方定价 https://help.aliyun.com/zh/model-studio/billing-for-model-studio
+# 官方定价参考 https://help.aliyun.com/zh/model-studio/billing-for-model-studio
 PRICING: dict[str, dict[str, float]] = {
     # 文本生成 (元/百万Token)
     "qwen3.5-flash": {"input_per_mtok": 0.2, "output_per_mtok": 2.0},
@@ -21,6 +23,7 @@ PRICING: dict[str, dict[str, float]] = {
 
 @dataclass
 class UsageRecord:
+    """单次 API 调用记录。"""
     service: str
     model: str = ""
     input_tokens: int = 0
@@ -30,6 +33,7 @@ class UsageRecord:
 
 
 class UsageTracker:
+    """用量追踪器：汇总各模型调用次数、Token、音频时长并估算费用。"""
     def __init__(self) -> None:
         self.records: list[UsageRecord] = []
 

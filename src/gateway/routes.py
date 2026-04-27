@@ -1,3 +1,5 @@
+# 网关路由：暴露 /v1/chat/completions 端点，兼容 OpenAI 风格，SSE 流式返回。
+
 import logging
 from typing import Any
 from uuid import uuid4
@@ -14,12 +16,12 @@ from src.gateway.sse import generate_sse
 
 
 router = APIRouter()
+# 延迟初始化引擎，避免依赖未就绪时创建
 _engine: DialogueEngine | None = None
 logger = logging.getLogger(__name__)
 SAFE_FALLBACK_REPLY = "不好意思，请您再说一遍？"
-
-
 def get_engine() -> DialogueEngine:
+    """获取或创建（单例）对话引擎。"""
     global _engine
     if _engine is None:
         settings = get_settings()
@@ -32,6 +34,10 @@ def get_engine() -> DialogueEngine:
 
 @router.post("/v1/chat/completions")
 async def chat_completions(request: Request, _=Depends(verify_auth)):
+    """
+    OpenAI 兼容的聊天接口。
+    从 messages 中提取用户输入，委托 DialogueEngine 处理后 SSE 流式返回。
+    """
     body = await request.json()
     settings = get_settings()
     if settings.gateway_log_requests:
@@ -62,6 +68,7 @@ async def chat_completions(request: Request, _=Depends(verify_auth)):
 
 
 def _extract_user_text(messages: Any) -> str:
+    """从 messages 列表中提取最新一条用户消息。"""
     if not isinstance(messages, list):
         return ""
 
@@ -72,6 +79,7 @@ def _extract_user_text(messages: Any) -> str:
 
 
 def _coerce_biz_params(value: Any) -> dict[str, Any] | None:
+    """将 biz_params 规范化为 dict 或 None。"""
     if value is None:
         return None
     if isinstance(value, dict):
