@@ -1,3 +1,5 @@
+# 本地 Demo 入口：在终端运行完整的语音客服机器人，支持文本/麦克风两种输入模式。
+
 from __future__ import annotations
 
 import argparse
@@ -20,6 +22,7 @@ from src.usage import UsageTracker
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """构建 CLI 参数解析器。"""
     parser = argparse.ArgumentParser(description="语音客服机器人 Demo")
     parser.add_argument(
         "--text-mode",
@@ -61,11 +64,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def select_steps(address_only: bool):
+    """根据参数选择完整回访流程或仅地址核对。"""
     # demo 常用两种入口：完整回访流程 or 只演示地址核对。
     return ADDRESS_ONLY_STEPS if address_only else DEFAULT_FLOW_STEPS
 
 
 def main() -> int:
+    """
+    主入口：解析参数 -> 加载配置 -> 组装引擎（ASR + Intent + Geocode + TTS） -> 运行对话。
+    """
     parser = build_parser()
     args = parser.parse_args()
     settings = get_settings()

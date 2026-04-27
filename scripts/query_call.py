@@ -1,3 +1,5 @@
+# 命令行工具：按 CallId 查询外呼通话详情
+
 from __future__ import annotations
 
 import argparse
@@ -14,6 +16,7 @@ from src.caller.aiccs import get_call_dialog_content
 
 
 def main() -> int:
+    """CLI 入口：接收 CallId 和日期，查询通话对话内容。"""
     parser = argparse.ArgumentParser(description="按 CallId 查询外呼通话详情")
     parser.add_argument("call_id", help="发起外呼时返回的 CallId")
     parser.add_argument(

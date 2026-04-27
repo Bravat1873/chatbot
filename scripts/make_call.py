@@ -1,3 +1,5 @@
+# 命令行工具：发起外呼
+
 from __future__ import annotations
 
 import argparse
@@ -13,6 +15,7 @@ from src.caller.aiccs import make_call
 
 
 def main() -> int:
+    """CLI 入口：接收被叫号码，调用 AICCS 发起外呼。"""
     parser = argparse.ArgumentParser(description="发起外呼")
     parser.add_argument("phone", help="被叫号码")
     args = parser.parse_args()
