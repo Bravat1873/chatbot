@@ -19,6 +19,13 @@ type Config struct {
 	AICCSCallbackToken string
 	GatewayAuthToken   string
 	LLMModel           string
+	DashScopeAPIKey    string
+	DashScopeBaseURL   string
+	DashScopeTimeout   int
+	AMapKey            string
+	AMapBaseURL        string
+	AMapCity           string
+	AMapTimeout        int
 
 	AliyunAccessKeyID     string
 	AliyunAccessKeySecret string
@@ -50,6 +57,13 @@ func Load() (Config, error) {
 		AICCSCallbackToken:    strings.TrimSpace(os.Getenv("AICCS_CALLBACK_TOKEN")),
 		GatewayAuthToken:      strings.TrimSpace(os.Getenv("GATEWAY_AUTH_TOKEN")),
 		LLMModel:              getEnv("LLM_MODEL", "qwen3.5-flash"),
+		DashScopeAPIKey:       strings.TrimSpace(os.Getenv("DASHSCOPE_API_KEY")),
+		DashScopeBaseURL:      getEnv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+		DashScopeTimeout:      getEnvInt("DASHSCOPE_TIMEOUT_SECONDS", 3),
+		AMapKey:               strings.TrimSpace(os.Getenv("AMAP_KEY")),
+		AMapBaseURL:           getEnv("AMAP_BASE_URL", "https://restapi.amap.com/v3"),
+		AMapCity:              getEnv("AMAP_CITY", ""),
+		AMapTimeout:           getEnvInt("AMAP_TIMEOUT_SECONDS", 3),
 		AliyunAccessKeyID:     strings.TrimSpace(os.Getenv("ALIYUN_ACCESS_KEY_ID")),
 		AliyunAccessKeySecret: strings.TrimSpace(os.Getenv("ALIYUN_ACCESS_KEY_SECRET")),
 		AICCSAppCode:          strings.TrimSpace(os.Getenv("AICCS_APP_CODE")),

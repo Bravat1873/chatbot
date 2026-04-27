@@ -11,10 +11,13 @@ import (
 	"time"
 
 	"chatbot/internal/config"
+	"chatbot/internal/core"
 	"chatbot/internal/db"
 	"chatbot/internal/handler"
 	internallog "chatbot/internal/log"
 	"chatbot/internal/provider/aliyun"
+	"chatbot/internal/provider/amap"
+	"chatbot/internal/provider/dashscope"
 	"chatbot/internal/repository"
 	"chatbot/internal/service"
 )
@@ -63,7 +66,25 @@ func main() {
 	// 组装依赖链：仓库 -> 服务 -> 路由
 	repo := repository.NewCallTaskRepository(pool)
 	callService := service.NewCallService(logger, repo, provider, cfg.CallerNumber, cfg.AICCSAppCode, cfg.SessionTimeoutSeconds)
-	dialogueService := service.NewDialogueService()
+	dialogueOptions := make([]service.DialogueOption, 0, 2)
+	if cfg.DashScopeAPIKey != "" {
+		llmClient := dashscope.New(dashscope.Config{
+			APIKey:  cfg.DashScopeAPIKey,
+			BaseURL: cfg.DashScopeBaseURL,
+			Model:   cfg.LLMModel,
+			Timeout: time.Duration(cfg.DashScopeTimeout) * time.Second,
+		})
+		dialogueOptions = append(dialogueOptions, service.WithIntentClassifier(core.NewLLMIntentClassifier(llmClient)))
+	}
+	if cfg.AMapKey != "" {
+		dialogueOptions = append(dialogueOptions, service.WithGeocoder(amap.New(amap.Config{
+			APIKey:  cfg.AMapKey,
+			BaseURL: cfg.AMapBaseURL,
+			City:    cfg.AMapCity,
+			Timeout: time.Duration(cfg.AMapTimeout) * time.Second,
+		})))
+	}
+	dialogueService := service.NewDialogueService(dialogueOptions...)
 	router := handler.NewRouter(handler.RouterDeps{
 		Logger:           logger,
 		CallService:      callService,

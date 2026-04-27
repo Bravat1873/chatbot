@@ -96,3 +96,44 @@ func TestDialogueEngineReturnsEndAfterFinish(t *testing.T) {
 		t.Fatalf("expected end message, got %q", reply)
 	}
 }
+
+type fakeGeocoder struct{}
+
+func (f *fakeGeocoder) ResolvePlace(ctx context.Context, keywords string) (GeocodeResult, error) {
+	_ = ctx
+	_ = keywords
+	return GeocodeResult{
+		Found: true,
+		Best: &PlaceCandidate{
+			Name:        "小家公寓",
+			Address:     "仑头村仑头路82号",
+			District:    "海珠区",
+			DisplayText: "海珠区仑头村仑头路82号小家公寓",
+		},
+	}, nil
+}
+
+func TestDialogueEngineAddressConfirmation(t *testing.T) {
+	engine := NewDialogueEngine(NewHeuristicIntentClassifier(), []DialogueStep{DefaultSteps[2]}, &fakeGeocoder{})
+
+	firstReply, _, _ := engine.ProcessTurn(context.Background(), "session-4", "", nil)
+	confirmReply, _, err := engine.ProcessTurn(context.Background(), "session-4", "广州海珠区轮头村八二路小家公寓", nil)
+	if err != nil {
+		t.Fatalf("address turn: %v", err)
+	}
+	finalReply, _, err := engine.ProcessTurn(context.Background(), "session-4", "是的", nil)
+	if err != nil {
+		t.Fatalf("confirm turn: %v", err)
+	}
+
+	state := engine.Snapshot("session-4")
+	if firstReply != DefaultSteps[2].Question {
+		t.Fatalf("unexpected first reply: %q", firstReply)
+	}
+	if !strings.Contains(confirmReply, "小家公寓") || !strings.Contains(confirmReply, "仑头村仑头路82号") {
+		t.Fatalf("unexpected confirm reply: %q", confirmReply)
+	}
+	if !strings.Contains(finalReply, EndMessage) || state.Results["address"]["status"] != "ok" {
+		t.Fatalf("unexpected final state reply=%q state=%#v", finalReply, state)
+	}
+}

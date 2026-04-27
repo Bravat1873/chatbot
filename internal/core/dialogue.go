@@ -63,22 +63,28 @@ type DialogueEngine struct {
 	mu                sync.Mutex
 	sessions          map[string]*SessionState
 	classifier        IntentClassifier
+	geocoder          Geocoder
 	steps             []DialogueStep
 	maxUnclearRetries int
 	maxTimeoutRetries int
 	maxAddressRetries int
 }
 
-func NewDialogueEngine(classifier IntentClassifier, steps []DialogueStep) *DialogueEngine {
+func NewDialogueEngine(classifier IntentClassifier, steps []DialogueStep, geocoders ...Geocoder) *DialogueEngine {
 	if classifier == nil {
 		classifier = NewHeuristicIntentClassifier()
 	}
 	if len(steps) == 0 {
 		steps = DefaultFlowSteps()
 	}
+	var geocoder Geocoder
+	if len(geocoders) > 0 {
+		geocoder = geocoders[0]
+	}
 	return &DialogueEngine{
 		sessions:          make(map[string]*SessionState),
 		classifier:        classifier,
+		geocoder:          geocoder,
 		steps:             append([]DialogueStep(nil), steps...),
 		maxUnclearRetries: 2,
 		maxTimeoutRetries: 1,
@@ -96,6 +102,10 @@ func (e *DialogueEngine) ProcessTurn(ctx context.Context, sessionID string, user
 	}
 	if state.Finished {
 		return EndMessage, state.Status, nil
+	}
+
+	if state.AwaitingAddressConfirm {
+		return e.handleAddressConfirmation(ctx, state, userText), state.Status, nil
 	}
 
 	step := e.currentStep(state)
@@ -131,7 +141,7 @@ func (e *DialogueEngine) ProcessTurn(ctx context.Context, sessionID string, user
 	case "yes_no":
 		return e.handleYesNoStep(state, *step, userText, classified), state.Status, nil
 	case "address":
-		return e.handleAddressStep(state, *step, userText, classified), state.Status, nil
+		return e.handleAddressStep(ctx, state, *step, userText, classified), state.Status, nil
 	default:
 		return e.completeUnclearStep(state, *step, userText, classified.Intent), state.Status, nil
 	}
@@ -169,6 +179,11 @@ func (e *DialogueEngine) currentStep(state *SessionState) *DialogueStep {
 }
 
 func (e *DialogueEngine) currentPrompt(state *SessionState) string {
+	if state.AwaitingAddressConfirm {
+		if text := lastBotText(state); text != "" {
+			return text
+		}
+	}
 	step := e.currentStep(state)
 	if step == nil {
 		return EndMessage
@@ -197,9 +212,85 @@ func (e *DialogueEngine) handleYesNoStep(state *SessionState, step DialogueStep,
 	return e.completeUnclearStep(state, step, userText, classified.Intent)
 }
 
-func (e *DialogueEngine) handleAddressStep(state *SessionState, step DialogueStep, userText string, classified IntentResult) string {
+func (e *DialogueEngine) handleAddressStep(ctx context.Context, state *SessionState, step DialogueStep, userText string, classified IntentResult) string {
+	if classified.Intent != "address" && classified.Address == "" {
+		if state.AddressRetries < e.maxAddressRetries {
+			state.AddressRetries++
+			return recordBotReply(state, AddressRetryPrompt)
+		}
+		state.Results["address"] = map[string]any{"status": "not_found", "text": userText, "intent": classified.Intent}
+		return e.advanceWithReply(state, "好的，地址已记录，后续会由人工进一步核实。")
+	}
+	if e.geocoder != nil {
+		searchText := classified.Address
+		if searchText == "" {
+			searchText = userText
+		}
+		result, err := e.geocoder.ResolvePlace(ctx, searchText)
+		if err == nil && result.Found && result.Best != nil {
+			state.AwaitingAddressConfirm = true
+			state.PendingAddressCandidate = map[string]any{
+				"name":         result.Best.Name,
+				"address":      result.Best.Address,
+				"district":     result.Best.District,
+				"display_text": result.Best.DisplayText,
+			}
+			state.PendingAddressText = userText
+			return recordBotReply(state, buildAddressConfirmationPrompt(searchText, *result.Best))
+		}
+	}
 	state.Results["address"] = map[string]any{"status": "unverified", "text": userText, "intent": classified.Intent}
 	return e.advanceWithReply(state, "好的，地址已记录。当前环境暂时无法完成地点搜索。")
+}
+
+func (e *DialogueEngine) handleAddressConfirmation(ctx context.Context, state *SessionState, userText string) string {
+	prompt := e.currentPrompt(state)
+	ensurePromptRecorded(state, prompt)
+	recordUserTurn(state, userText)
+
+	candidate := state.PendingAddressCandidate
+	originalText := state.PendingAddressText
+	if candidate == nil {
+		state.AwaitingAddressConfirm = false
+		state.PendingAddressText = ""
+		return recordBotReply(state, AddressRetryPrompt)
+	}
+	if userText == "用户没有说话" {
+		return e.handleAddressConfirmationRejected(state, originalText)
+	}
+	classified, err := e.classifier.Classify(ctx, userText, IntentContext{
+		Stage:          "address_confirm",
+		ExpectedIntent: "yes_no",
+		Question:       prompt,
+	})
+	if err != nil {
+		classified = IntentResult{Intent: "unclear"}
+	}
+	state.AwaitingAddressConfirm = false
+	state.PendingAddressCandidate = nil
+	state.PendingAddressText = ""
+	if classified.Intent == "yes" {
+		state.Results["address"] = map[string]any{
+			"status": "ok",
+			"text":   originalText,
+			"intent": "address",
+			"place":  candidate,
+		}
+		return e.advanceWithReply(state, "好的，地址已记录。")
+	}
+	return e.handleAddressConfirmationRejected(state, originalText)
+}
+
+func (e *DialogueEngine) handleAddressConfirmationRejected(state *SessionState, originalText string) string {
+	state.AwaitingAddressConfirm = false
+	state.PendingAddressCandidate = nil
+	state.PendingAddressText = ""
+	if state.AddressRetries < e.maxAddressRetries {
+		state.AddressRetries++
+		return recordBotReply(state, AddressRetryPrompt)
+	}
+	state.Results["address"] = map[string]any{"status": "not_found", "text": originalText, "intent": "address"}
+	return e.advanceWithReply(state, "好的，地址已记录，后续会由人工进一步核实。")
 }
 
 func (e *DialogueEngine) handleSilence(state *SessionState, step DialogueStep) string {
@@ -270,6 +361,15 @@ func ensurePromptRecorded(state *SessionState, prompt string) {
 	if last["speaker"] != "bot" || last["text"] != prompt {
 		recordBotReply(state, prompt)
 	}
+}
+
+func lastBotText(state *SessionState) string {
+	for i := len(state.Transcript) - 1; i >= 0; i-- {
+		if state.Transcript[i]["speaker"] == "bot" {
+			return state.Transcript[i]["text"]
+		}
+	}
+	return ""
 }
 
 func copyMap(input map[string]any) map[string]any {

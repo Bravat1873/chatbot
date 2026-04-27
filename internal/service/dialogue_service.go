@@ -13,9 +13,32 @@ type DialogueService struct {
 	engine *core.DialogueEngine
 }
 
-func NewDialogueService() *DialogueService {
+type DialogueOption func(*dialogueDeps)
+
+type dialogueDeps struct {
+	classifier core.IntentClassifier
+	geocoder   core.Geocoder
+}
+
+func WithIntentClassifier(classifier core.IntentClassifier) DialogueOption {
+	return func(deps *dialogueDeps) {
+		deps.classifier = classifier
+	}
+}
+
+func WithGeocoder(geocoder core.Geocoder) DialogueOption {
+	return func(deps *dialogueDeps) {
+		deps.geocoder = geocoder
+	}
+}
+
+func NewDialogueService(options ...DialogueOption) *DialogueService {
+	deps := dialogueDeps{classifier: core.NewHeuristicIntentClassifier()}
+	for _, option := range options {
+		option(&deps)
+	}
 	return &DialogueService{
-		engine: core.NewDialogueEngine(core.NewHeuristicIntentClassifier(), core.DefaultFlowSteps()),
+		engine: core.NewDialogueEngine(deps.classifier, core.DefaultFlowSteps(), deps.geocoder),
 	}
 }
 
