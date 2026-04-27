@@ -14,12 +14,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/app-go ./cmd/server
 
 FROM alpine:3.22
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata wget
 WORKDIR /app
 
 COPY --from=builder /out/app-go /usr/local/bin/app-go
 COPY migrations ./migrations
-
-EXPOSE 8080
 
 CMD ["app-go"]
