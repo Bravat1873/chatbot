@@ -2,39 +2,30 @@ package core
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHeuristicIntentDetectsYesAndNo(t *testing.T) {
 	classifier := NewHeuristicIntentClassifier()
 
 	yes, err := classifier.Classify(context.Background(), "嗯对，已经约过了", IntentContext{ExpectedIntent: "yes_no"})
-	if err != nil {
-		t.Fatalf("classify yes: %v", err)
-	}
+	require.NoError(t, err)
 	no, err := classifier.Classify(context.Background(), "还没呢，没有预约", IntentContext{ExpectedIntent: "yes_no"})
-	if err != nil {
-		t.Fatalf("classify no: %v", err)
-	}
+	require.NoError(t, err)
 
-	if yes.Intent != "yes" {
-		t.Fatalf("expected yes, got %#v", yes)
-	}
-	if no.Intent != "no" {
-		t.Fatalf("expected no, got %#v", no)
-	}
+	assert.Equal(t, "yes", yes.Intent)
+	assert.Equal(t, "no", no.Intent)
 }
 
 func TestHeuristicIntentDetectsAddress(t *testing.T) {
 	classifier := NewHeuristicIntentClassifier()
 
 	result, err := classifier.Classify(context.Background(), "北京市朝阳区建国路88号SOHO现代城", IntentContext{ExpectedIntent: "address"})
-	if err != nil {
-		t.Fatalf("classify address: %v", err)
-	}
+	require.NoError(t, err)
 
-	if result.Intent != "address" || !strings.Contains(result.Address, "88号") {
-		t.Fatalf("expected address with 88号, got %#v", result)
-	}
+	assert.Equal(t, "address", result.Intent)
+	assert.Contains(t, result.Address, "88号")
 }

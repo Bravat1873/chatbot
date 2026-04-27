@@ -2,8 +2,10 @@ package core
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeLLMClient struct {
@@ -29,16 +31,13 @@ func TestLLMIntentClassifierUsesLLMWhenHeuristicIsUnclear(t *testing.T) {
 		ExpectedIntent: "yes_no",
 		Question:       DefaultSteps[0].Question,
 	})
-	if err != nil {
-		t.Fatalf("classify: %v", err)
-	}
+	require.NoError(t, err)
 
-	if result.Intent != "yes" || result.Source != "llm" {
-		t.Fatalf("expected llm yes, got %#v", result)
-	}
-	if llm.req.MaxTokens != 20 || llm.req.SystemPrompt == "" || llm.req.UserPrompt == "" {
-		t.Fatalf("unexpected llm request: %#v", llm.req)
-	}
+	assert.Equal(t, "yes", result.Intent)
+	assert.Equal(t, "llm", result.Source)
+	assert.Equal(t, 20, llm.req.MaxTokens)
+	assert.NotEmpty(t, llm.req.SystemPrompt)
+	assert.NotEmpty(t, llm.req.UserPrompt)
 }
 
 func TestLLMIntentClassifierUsesLLMWhenConfiguredEvenIfHeuristicIsCertain(t *testing.T) {
@@ -46,16 +45,11 @@ func TestLLMIntentClassifierUsesLLMWhenConfiguredEvenIfHeuristicIsCertain(t *tes
 	classifier := NewLLMIntentClassifier(llm)
 
 	result, err := classifier.Classify(context.Background(), "有的", IntentContext{ExpectedIntent: "yes_no"})
-	if err != nil {
-		t.Fatalf("classify: %v", err)
-	}
+	require.NoError(t, err)
 
-	if result.Intent != "no" || result.Source != "llm" {
-		t.Fatalf("expected llm no, got %#v", result)
-	}
-	if llm.calls != 1 {
-		t.Fatalf("llm should be called once, got %d", llm.calls)
-	}
+	assert.Equal(t, "no", result.Intent)
+	assert.Equal(t, "llm", result.Source)
+	assert.Equal(t, 1, llm.calls, "llm should be called once")
 }
 
 func TestLLMIntentClassifierGeneratesAddressConfirmationPrompt(t *testing.T) {
@@ -68,19 +62,13 @@ func TestLLMIntentClassifierGeneratesAddressConfirmationPrompt(t *testing.T) {
 		FocusText:      "龙吟大街8",
 		FallbackPrompt: "回退话术",
 	})
-	if err != nil {
-		t.Fatalf("generate prompt: %v", err)
-	}
+	require.NoError(t, err)
 
-	if prompt != "您说的是龙吟大街8号对吗？" {
-		t.Fatalf("unexpected prompt: %q", prompt)
-	}
-	if llm.calls != 1 || llm.req.MaxTokens != 64 || llm.req.Temperature != 0.2 {
-		t.Fatalf("unexpected llm request: calls=%d req=%#v", llm.calls, llm.req)
-	}
-	if !strings.Contains(llm.req.UserPrompt, "龙吟大街8") {
-		t.Fatalf("prompt should include focus text: %q", llm.req.UserPrompt)
-	}
+	assert.Equal(t, "您说的是龙吟大街8号对吗？", prompt)
+	assert.Equal(t, 1, llm.calls)
+	assert.Equal(t, 64, llm.req.MaxTokens)
+	assert.Equal(t, float64(0.2), llm.req.Temperature)
+	assert.Contains(t, llm.req.UserPrompt, "龙吟大街8")
 }
 
 func TestLLMIntentClassifierAddsNamedPlaceWhenLLMOmitsIt(t *testing.T) {
@@ -93,11 +81,7 @@ func TestLLMIntentClassifierAddsNamedPlaceWhenLLMOmitsIt(t *testing.T) {
 		MatchedName:  "贝朗公司",
 		FocusText:    "琶洲大道东1号保利国际广场南塔贝朗公司",
 	})
-	if err != nil {
-		t.Fatalf("generate prompt: %v", err)
-	}
+	require.NoError(t, err)
 
-	if !strings.Contains(prompt, "贝朗公司") {
-		t.Fatalf("named place should be preserved, got %q", prompt)
-	}
+	assert.Contains(t, prompt, "贝朗公司", "named place should be preserved")
 }

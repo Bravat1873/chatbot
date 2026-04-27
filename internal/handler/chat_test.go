@@ -11,6 +11,8 @@ import (
 	"chatbot/internal/gateway"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type stubDialogueService struct {
@@ -55,26 +57,17 @@ func TestChatCompletionsStreamsSSEReply(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.Code)
-	}
-	if dialogueSvc.req.SessionID != "session-1" || dialogueSvc.req.UserText != "有的" {
-		t.Fatalf("unexpected dialogue request: %#v", dialogueSvc.req)
-	}
-	if dialogueSvc.req.BizParams["customer_name"] != "张三" {
-		t.Fatalf("unexpected biz params: %#v", dialogueSvc.req.BizParams)
-	}
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, "session-1", dialogueSvc.req.SessionID)
+	assert.Equal(t, "有的", dialogueSvc.req.UserText)
+	assert.Equal(t, "张三", dialogueSvc.req.BizParams["customer_name"])
 	dataLines := sseDataLines(resp.Body.String())
-	if dataLines[len(dataLines)-1] != "[DONE]" {
-		t.Fatalf("expected DONE, got %q", dataLines[len(dataLines)-1])
-	}
+	assert.Equal(t, "[DONE]", dataLines[len(dataLines)-1])
 	var first gateway.SSEChunk
-	if err := json.Unmarshal([]byte(dataLines[0]), &first); err != nil {
-		t.Fatalf("decode first chunk: %v", err)
-	}
-	if first.Choices[0].Delta.Content != "第一句，" || first.Model != "qwen-plus" || !strings.HasPrefix(first.ID, "chatcmpl-") {
-		t.Fatalf("unexpected first chunk: %#v", first)
-	}
+	require.NoError(t, json.Unmarshal([]byte(dataLines[0]), &first))
+	assert.Equal(t, "第一句，", first.Choices[0].Delta.Content)
+	assert.Equal(t, "qwen-plus", first.Model)
+	assert.True(t, strings.HasPrefix(first.ID, "chatcmpl-"))
 }
 
 func TestChatCompletionsRequiresAuthWhenTokenConfigured(t *testing.T) {
@@ -92,9 +85,7 @@ func TestChatCompletionsRequiresAuthWhenTokenConfigured(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", resp.Code)
-	}
+	assert.Equal(t, http.StatusUnauthorized, resp.Code)
 }
 
 func TestChatCompletionsReturnsSafeReplyWhenDialogueFails(t *testing.T) {
@@ -114,17 +105,12 @@ func TestChatCompletionsReturnsSafeReplyWhenDialogueFails(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.Code)
-	}
+	assert.Equal(t, http.StatusOK, resp.Code)
 	dataLines := sseDataLines(resp.Body.String())
 	var first gateway.SSEChunk
-	if err := json.Unmarshal([]byte(dataLines[0]), &first); err != nil {
-		t.Fatalf("decode first chunk: %v", err)
-	}
-	if first.Choices[0].Delta.Content != "不好意思，" || first.Model != "default-model" {
-		t.Fatalf("unexpected fallback chunk: %#v", first)
-	}
+	require.NoError(t, json.Unmarshal([]byte(dataLines[0]), &first))
+	assert.Equal(t, "不好意思，", first.Choices[0].Delta.Content)
+	assert.Equal(t, "default-model", first.Model)
 }
 
 func sseDataLines(body string) []string {

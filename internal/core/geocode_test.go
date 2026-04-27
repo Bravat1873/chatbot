@@ -1,21 +1,19 @@
 package core
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestIsPreciseEnough(t *testing.T) {
-	if !IsPreciseEnough("门牌号", "北京市朝阳区建国路88号") {
-		t.Fatal("expected precise level to pass")
-	}
-	if IsPreciseEnough("区县", "北京市朝阳区") {
-		t.Fatal("expected broad level to fail")
-	}
+	assert.True(t, IsPreciseEnough("门牌号", "北京市朝阳区建国路88号"), "expected precise level to pass")
+	assert.False(t, IsPreciseEnough("区县", "北京市朝阳区"), "expected broad level to fail")
 }
 
 func TestBuildDisplayTextDeduplicatesAdjacentParts(t *testing.T) {
 	got := BuildDisplayText("小家公寓", "仑头村仑头路82号", "海珠区")
-	if got != "海珠区仑头村仑头路82号小家公寓" {
-		t.Fatalf("unexpected display text: %q", got)
-	}
+	assert.Equal(t, "海珠区仑头村仑头路82号小家公寓", got)
 }
 
 func TestMergePlaceCandidatesRanksInputTipsWithVerification(t *testing.T) {
@@ -45,21 +43,14 @@ func TestMergePlaceCandidatesRanksInputTipsWithVerification(t *testing.T) {
 		}
 		return AddressVerifyResult{Success: true, Formatted: text, Level: "兴趣点", PrecisionOK: true}
 	})
-	if len(candidates) != 2 {
-		t.Fatalf("expected candidates, got %#v", candidates)
-	}
-	if candidates[0].Name != "小家公寓" || !candidates[0].PrecisionOK {
-		t.Fatalf("unexpected best candidate: %#v", candidates[0])
-	}
+	assert.Len(t, candidates, 2)
+	assert.Equal(t, "小家公寓", candidates[0].Name)
+	assert.True(t, candidates[0].PrecisionOK)
 }
 
 func TestAddressNeedsConfirmation(t *testing.T) {
 	exact := PlaceCandidate{DisplayText: "海珠区仑头村仑头路82号小家公寓"}
-	if addressNeedsConfirmation("海珠区仑头村仑头路82号小家公寓", exact) {
-		t.Fatal("exact address should not need confirmation")
-	}
+	assert.False(t, addressNeedsConfirmation("海珠区仑头村仑头路82号小家公寓", exact), "exact address should not need confirmation")
 	fuzzy := PlaceCandidate{DisplayText: "海珠区仑头村仑头路82号小家公寓"}
-	if !addressNeedsConfirmation("广州海珠区轮头村八二路小家公寓", fuzzy) {
-		t.Fatal("fuzzy ASR address should need confirmation")
-	}
+	assert.True(t, addressNeedsConfirmation("广州海珠区轮头村八二路小家公寓", fuzzy), "fuzzy ASR address should need confirmation")
 }

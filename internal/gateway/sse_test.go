@@ -5,49 +5,36 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSplitSentencesKeepsPunctuation(t *testing.T) {
 	got := SplitSentences("你好，今天怎么样？挺好。")
 	want := []string{"你好，", "今天怎么样？", "挺好。"}
-	if len(got) != len(want) {
-		t.Fatalf("expected %d sentences, got %d: %#v", len(want), len(got), got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("sentence %d expected %q, got %q", i, want[i], got[i])
-		}
-	}
+	assert.Equal(t, want, got)
 }
 
 func TestWriteChatCompletionSSEUsesOpenAIChunkFormat(t *testing.T) {
 	var buf bytes.Buffer
 
-	if err := WriteChatCompletionSSE(&buf, "你好，世界。", "qwen-plus", 1734523000, "chatcmpl-fixed"); err != nil {
-		t.Fatalf("write sse: %v", err)
-	}
+	require.NoError(t, WriteChatCompletionSSE(&buf, "你好，世界。", "qwen-plus", 1734523000, "chatcmpl-fixed"))
 
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-	if lines[len(lines)-1] != "data: [DONE]" {
-		t.Fatalf("expected final DONE line, got %q", lines[len(lines)-1])
-	}
+	assert.Equal(t, "data: [DONE]", lines[len(lines)-1])
 
 	var first SSEChunk
-	if err := json.Unmarshal([]byte(strings.TrimPrefix(lines[0], "data: ")), &first); err != nil {
-		t.Fatalf("decode first chunk: %v", err)
-	}
-	if first.Object != "chat.completion.chunk" || first.Model != "qwen-plus" || first.Created != 1734523000 || first.ID != "chatcmpl-fixed" {
-		t.Fatalf("unexpected first chunk metadata: %#v", first)
-	}
-	if first.Choices[0].Delta.Content != "你好，" || first.Choices[0].FinishReason != nil {
-		t.Fatalf("unexpected first choice: %#v", first.Choices[0])
-	}
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimPrefix(lines[0], "data: ")), &first))
+	assert.Equal(t, "chat.completion.chunk", first.Object)
+	assert.Equal(t, "qwen-plus", first.Model)
+	assert.Equal(t, int64(1734523000), first.Created)
+	assert.Equal(t, "chatcmpl-fixed", first.ID)
+	assert.Equal(t, "你好，", first.Choices[0].Delta.Content)
+	assert.Nil(t, first.Choices[0].FinishReason)
 
 	var final SSEChunk
-	if err := json.Unmarshal([]byte(strings.TrimPrefix(lines[len(lines)-3], "data: ")), &final); err != nil {
-		t.Fatalf("decode final chunk: %v", err)
-	}
-	if final.Choices[0].FinishReason == nil || *final.Choices[0].FinishReason != "stop" {
-		t.Fatalf("expected stop finish reason, got %#v", final.Choices[0].FinishReason)
-	}
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimPrefix(lines[len(lines)-3], "data: ")), &final))
+	require.NotNil(t, final.Choices[0].FinishReason)
+	assert.Equal(t, "stop", *final.Choices[0].FinishReason)
 }

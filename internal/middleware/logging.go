@@ -1,3 +1,4 @@
+// HTTP 请求日志中间件：记录每个请求的方法、路径、状态码、延迟和客户端 IP。
 package middleware
 
 import (

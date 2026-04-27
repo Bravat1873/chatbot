@@ -1,3 +1,4 @@
+// 外呼任务 HTTP 处理器：接收创建外呼请求，参数校验后委托给 CallService。
 package handler
 
 import (

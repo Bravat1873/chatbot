@@ -1,3 +1,4 @@
+// 意图识别层：启发式规则 + LLM 双通道分类器，支持 yes/no/address/unclear 四类意图。
 package core
 
 import (
@@ -6,12 +7,14 @@ import (
 	"strings"
 )
 
+// IntentContext 当前对话上下文，用于引导分类器按阶段识别意图。
 type IntentContext struct {
 	Stage          string
 	ExpectedIntent string
 	Question       string
 }
 
+// IntentResult 意图分类结果，包含意图类别、提取的地址及置信度元数据。
 type IntentResult struct {
 	Intent     string
 	Address    string
@@ -20,11 +23,13 @@ type IntentResult struct {
 	RawText    string
 }
 
+// IntentClassifier 意图分类器接口，启发式和 LLM 实现均遵循此接口。
 type IntentClassifier interface {
 	Classify(ctx context.Context, text string, context IntentContext) (IntentResult, error)
 	GenerateAddressConfirmation(ctx context.Context, input AddressConfirmationInput) (string, error)
 }
 
+// HeuristicIntentClassifier 基于关键词和正则的启发式意图分类器，不依赖外部 LLM。
 type HeuristicIntentClassifier struct{}
 
 var (
@@ -43,10 +48,12 @@ var (
 	digitPattern = regexp.MustCompile(`\d`)
 )
 
+// NewHeuristicIntentClassifier 创建启发式意图分类器实例。
 func NewHeuristicIntentClassifier() *HeuristicIntentClassifier {
 	return &HeuristicIntentClassifier{}
 }
 
+// Classify 使用启发式规则对用户文本进行意图分类，返回 yes/no/address/unclear。
 func (c *HeuristicIntentClassifier) Classify(ctx context.Context, text string, context IntentContext) (IntentResult, error) {
 	_ = ctx
 	cleaned := strings.TrimSpace(text)
@@ -89,6 +96,7 @@ func (c *HeuristicIntentClassifier) Classify(ctx context.Context, text string, c
 	return IntentResult{Intent: "unclear", Confidence: "low", Source: "heuristic", RawText: text}, nil
 }
 
+// GenerateAddressConfirmation 生成地址确认话术，供对话引擎向用户核实匹配到的地点。
 func (c *HeuristicIntentClassifier) GenerateAddressConfirmation(ctx context.Context, input AddressConfirmationInput) (string, error) {
 	_ = ctx
 	if input.FallbackPrompt != "" {

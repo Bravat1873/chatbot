@@ -1,3 +1,4 @@
+// Chat 对话处理器：接收 OpenAI-compatible 请求，经 DialogueService 处理后以 SSE 流式返回。
 package handler
 
 import (
@@ -12,10 +13,12 @@ import (
 
 const safeFallbackReply = "不好意思，请您再说一遍？"
 
+// DialogueService 对话服务接口，handler 通过此接口解耦 service 层。
 type DialogueService interface {
 	ProcessTurn(ctx context.Context, req gateway.TurnRequest) (gateway.TurnResponse, error)
 }
 
+// ChatCompletions 处理 /v1/chat/completions 请求：解析 -> 调 service -> 写 SSE 流。
 func ChatCompletions(logger *slog.Logger, svc DialogueService, defaultModel string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req gateway.ChatCompletionRequest

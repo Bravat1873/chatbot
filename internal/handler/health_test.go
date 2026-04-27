@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHealthzReturnsOK(t *testing.T) {
@@ -18,23 +20,15 @@ func TestHealthzReturnsOK(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	resp := httptest.NewRecorder()
-	k := r
-	k.ServeHTTP(resp, req)
+	r.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.Code)
-	}
+	assert.Equal(t, http.StatusOK, resp.Code)
 	var body map[string]any
-	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body["code"] != "OK" || body["message"] != "success" {
-		t.Fatalf("unexpected response body: %#v", body)
-	}
-	data, ok := body["data"].(map[string]any)
-	if !ok || data["status"] != "ok" {
-		t.Fatalf("expected ok status data, got %#v", body["data"])
-	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	assert.Equal(t, "OK", body["code"])
+	assert.Equal(t, "success", body["message"])
+	data := body["data"].(map[string]any)
+	assert.Equal(t, "ok", data["status"])
 }
 
 func TestHealthzReturnsServiceUnavailableWhenCheckFails(t *testing.T) {
@@ -46,14 +40,9 @@ func TestHealthzReturnsServiceUnavailableWhenCheckFails(t *testing.T) {
 	resp := httptest.NewRecorder()
 	r.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503, got %d", resp.Code)
-	}
+	assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
 	var body map[string]any
-	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body["code"] != "SERVICE_UNAVAILABLE" || body["message"] != "service unavailable" {
-		t.Fatalf("unexpected response body: %#v", body)
-	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	assert.Equal(t, "SERVICE_UNAVAILABLE", body["code"])
+	assert.Equal(t, "service unavailable", body["message"])
 }

@@ -1,3 +1,4 @@
+// LLM 意图分类器：通过大模型（DashScope/qwen）提升意图和地址提取的准确率，启发式作为兜底。
 package core
 
 import (
@@ -7,6 +8,7 @@ import (
 	"strings"
 )
 
+// LLMRequest LLM 调用请求参数。
 type LLMRequest struct {
 	SystemPrompt string
 	UserPrompt   string
@@ -14,15 +16,18 @@ type LLMRequest struct {
 	Temperature  float64
 }
 
+// LLMClient LLM 客户端接口，解耦具体的大模型服务实现。
 type LLMClient interface {
 	GenerateJSON(ctx context.Context, req LLMRequest) (string, error)
 }
 
+// LLMIntentClassifier LLM + 启发式双通道分类器：LLM 优先，启发式兜底。
 type LLMIntentClassifier struct {
 	heuristic *HeuristicIntentClassifier
 	llm       LLMClient
 }
 
+// NewLLMIntentClassifier 创建双通道分类器，llm 为 nil 时退化为纯启发式。
 func NewLLMIntentClassifier(llm LLMClient) *LLMIntentClassifier {
 	return &LLMIntentClassifier{
 		heuristic: NewHeuristicIntentClassifier(),
@@ -30,6 +35,7 @@ func NewLLMIntentClassifier(llm LLMClient) *LLMIntentClassifier {
 	}
 }
 
+// Classify 先跑启发式，若 LLM 可用则用 LLM 结果覆盖（置信度标记为 high）。
 func (c *LLMIntentClassifier) Classify(ctx context.Context, text string, intentContext IntentContext) (IntentResult, error) {
 	heuristic, err := c.heuristic.Classify(ctx, text, intentContext)
 	if err != nil {
@@ -56,6 +62,7 @@ func (c *LLMIntentClassifier) Classify(ctx context.Context, text string, intentC
 	return parsed, nil
 }
 
+// GenerateAddressConfirmation 生成地址确认话术，LLM 不可用时回退到模板生成。
 func (c *LLMIntentClassifier) GenerateAddressConfirmation(ctx context.Context, input AddressConfirmationInput) (string, error) {
 	fallback := input.FallbackPrompt
 	if fallback == "" {

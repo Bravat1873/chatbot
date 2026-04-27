@@ -1,3 +1,4 @@
+// 高德地图 Provider：封装 InputTips、POI 搜索和地址复核 API，实现 core.Geocoder 接口。
 package amap
 
 import (
@@ -13,6 +14,7 @@ import (
 
 const defaultVerifyCandidateLimit = 3
 
+// Config 高德 API 配置参数。
 type Config struct {
 	APIKey  string
 	BaseURL string
@@ -20,6 +22,7 @@ type Config struct {
 	Timeout time.Duration
 }
 
+// Client 高德地图 API 客户端，实现 core.Geocoder 接口。
 type Client struct {
 	apiKey     string
 	baseURL    string
@@ -28,6 +31,7 @@ type Client struct {
 	httpClient *http.Client
 }
 
+// New 创建高德地图客户端实例。
 func New(config Config) *Client {
 	baseURL := strings.TrimRight(strings.TrimSpace(config.BaseURL), "/")
 	if baseURL == "" {
@@ -48,6 +52,7 @@ func New(config Config) *Client {
 	}
 }
 
+// ResolvePlace 并行调用 InputTips + POI 搜索，合并候选后按评分排序返回最佳匹配。
 func (c *Client) ResolvePlace(ctx context.Context, keywords string) (core.GeocodeResult, error) {
 	cleaned := strings.TrimSpace(keywords)
 	if cleaned == "" {
@@ -100,6 +105,7 @@ func limitCandidatesForVerify(tips []core.PlaceCandidate, pois []core.PlaceCandi
 	return append([]core.PlaceCandidate(nil), tips[:tipsLimit]...), append([]core.PlaceCandidate(nil), pois[:poisLimit]...)
 }
 
+// VerifyAddress 调用高德地理编码 API 复核地址文本，返回格式化地址与精度判定。
 func (c *Client) VerifyAddress(ctx context.Context, addressText string) (core.AddressVerifyResult, error) {
 	cleaned := strings.TrimSpace(addressText)
 	if cleaned == "" {
@@ -131,6 +137,7 @@ func (c *Client) VerifyAddress(ctx context.Context, addressText string) (core.Ad
 	}, nil
 }
 
+// GetInputTips 调用高德输入提示 API，返回最多 5 条联想结果。
 func (c *Client) GetInputTips(ctx context.Context, keywords string) (core.GeocodeResult, error) {
 	cleaned := strings.TrimSpace(keywords)
 	if cleaned == "" {
@@ -175,6 +182,7 @@ func (c *Client) GetInputTips(ctx context.Context, keywords string) (core.Geocod
 	return core.GeocodeResult{Found: len(results) > 0, Tips: results}, nil
 }
 
+// SearchPlace 调用高德 POI 搜索 API，返回最多 3 条搜索结果。
 func (c *Client) SearchPlace(ctx context.Context, keywords string) (core.GeocodeResult, error) {
 	cleaned := strings.TrimSpace(keywords)
 	if cleaned == "" {
@@ -276,8 +284,10 @@ type placeTextResponse struct {
 	} `json:"pois"`
 }
 
+// amapString 兼容高德 API 返回的 address 字段（可能是字符串也可能是字符串数组）。
 type amapString string
 
+// UnmarshalJSON 将字符串或字符串数组统一解为单字符串。
 func (s *amapString) UnmarshalJSON(data []byte) error {
 	var text string
 	if err := json.Unmarshal(data, &text); err == nil {

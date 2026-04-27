@@ -13,6 +13,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type stubCallService struct {
@@ -49,23 +51,15 @@ func TestCreateCallTaskReturnsEnvelope(t *testing.T) {
 
 	r.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.Code)
-	}
+	assert.Equal(t, http.StatusOK, resp.Code)
 	var responseBody map[string]any
-	if err := json.Unmarshal(resp.Body.Bytes(), &responseBody); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if responseBody["code"] != "OK" || responseBody["message"] != "success" {
-		t.Fatalf("unexpected response body: %#v", responseBody)
-	}
-	data, ok := responseBody["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected response data object, got %#v", responseBody["data"])
-	}
-	if data["task_id"] != taskID.String() || data["call_id"] != callID || data["status"] != string(model.CallStatusAccepted) {
-		t.Fatalf("unexpected response data: %#v", data)
-	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
+	assert.Equal(t, "OK", responseBody["code"])
+	assert.Equal(t, "success", responseBody["message"])
+	data := responseBody["data"].(map[string]any)
+	assert.Equal(t, taskID.String(), data["task_id"])
+	assert.Equal(t, callID, data["call_id"])
+	assert.Equal(t, string(model.CallStatusAccepted), data["status"])
 }
 
 func TestCreateCallTaskMapsAPIErrorEnvelope(t *testing.T) {
@@ -92,18 +86,11 @@ func TestCreateCallTaskMapsAPIErrorEnvelope(t *testing.T) {
 
 	r.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d", resp.Code)
-	}
+	assert.Equal(t, http.StatusBadGateway, resp.Code)
 	var responseBody map[string]any
-	if err := json.Unmarshal(resp.Body.Bytes(), &responseBody); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if responseBody["code"] != "UPSTREAM_ERROR" || responseBody["message"] != "call submit failed" {
-		t.Fatalf("unexpected response body: %#v", responseBody)
-	}
-	data, ok := responseBody["data"].(map[string]any)
-	if !ok || data["task_id"] != taskID.String() {
-		t.Fatalf("expected task_id data, got %#v", responseBody["data"])
-	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
+	assert.Equal(t, "UPSTREAM_ERROR", responseBody["code"])
+	assert.Equal(t, "call submit failed", responseBody["message"])
+	data := responseBody["data"].(map[string]any)
+	assert.Equal(t, taskID.String(), data["task_id"])
 }

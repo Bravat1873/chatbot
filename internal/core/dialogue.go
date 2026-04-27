@@ -1,3 +1,4 @@
+// 对话引擎：管理多轮对话状态机，驱动预约确认、满意度、地址采集三个阶段的流程。
 package core
 
 import (
@@ -6,6 +7,7 @@ import (
 	"sync"
 )
 
+// 对话流程中的固定话术常量。
 const (
 	EndMessage         = "本次回访结束，感谢您的配合。"
 	TimeoutEndMessage  = "长时间未收到回应，本次回访先结束。"
@@ -13,6 +15,7 @@ const (
 	AddressRetryPrompt = "我还没完全核对到这个地址，请再详细说一下，尽量包含小区、路名和门牌号。"
 )
 
+// DialogueStep 定义对话流程中的一个阶段：提问、期望意图与重试话术。
 type DialogueStep struct {
 	Key            string
 	Question       string
@@ -20,6 +23,8 @@ type DialogueStep struct {
 	RetryPrompt    string
 }
 
+// DefaultSteps 默认两阶段流程（预约确认 + 满意度），不含地址采集。
+// 地址阶段只在同时配置了 LLM 和 Geocoder 时由 service 层动态追加。
 var DefaultSteps = []DialogueStep{
 	{
 		Key:            "appointment_confirmed",
@@ -41,10 +46,12 @@ var DefaultSteps = []DialogueStep{
 	},
 }
 
+// DefaultFlowSteps 返回默认流程步骤的副本，调用方可安全修改。
 func DefaultFlowSteps() []DialogueStep {
 	return append([]DialogueStep(nil), DefaultSteps[:2]...)
 }
 
+// SessionState 记录单个会话的运行态，包括当前步骤、重试计数、已采集结果和对话抄本。
 type SessionState struct {
 	StepIndex               int
 	UnclearRetries          int
@@ -60,6 +67,7 @@ type SessionState struct {
 	PendingAddressText      string
 }
 
+// DialogueEngine 多轮对话状态机，按预设 DialogueStep 推进对话并采集用户意图与地址。
 type DialogueEngine struct {
 	mu                sync.Mutex
 	sessions          map[string]*SessionState
@@ -72,6 +80,7 @@ type DialogueEngine struct {
 	maxAddressRetries int
 }
 
+// NewDialogueEngine 创建对话引擎实例，classifier 为 nil 时自动退化为启发式分类器。
 func NewDialogueEngine(classifier IntentClassifier, steps []DialogueStep, geocoders ...Geocoder) *DialogueEngine {
 	if classifier == nil {
 		classifier = NewHeuristicIntentClassifier()
@@ -95,6 +104,7 @@ func NewDialogueEngine(classifier IntentClassifier, steps []DialogueStep, geocod
 	}
 }
 
+// ProcessTurn 处理一轮用户输入，返回 bot 回复文本和当前会话状态。
 func (e *DialogueEngine) ProcessTurn(ctx context.Context, sessionID string, userText string, bizParams map[string]any) (string, string, error) {
 	sessionLock := e.lockForSession(sessionID)
 	sessionLock.Lock()
@@ -151,6 +161,7 @@ func (e *DialogueEngine) ProcessTurn(ctx context.Context, sessionID string, user
 	}
 }
 
+// Snapshot 返回指定会话状态的只读副本，用于外部监控或调试。
 func (e *DialogueEngine) Snapshot(sessionID string) *SessionState {
 	sessionLock := e.lockForSession(sessionID)
 	sessionLock.Lock()

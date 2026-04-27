@@ -2,44 +2,34 @@ package core
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDialogueEngineHappyPath(t *testing.T) {
 	engine := NewDialogueEngine(NewHeuristicIntentClassifier(), DefaultFlowSteps())
 
 	firstReply, _, err := engine.ProcessTurn(context.Background(), "session-1", "", nil)
-	if err != nil {
-		t.Fatalf("first turn: %v", err)
-	}
+	require.NoError(t, err)
 	secondReply, _, err := engine.ProcessTurn(context.Background(), "session-1", "有的，已经预约了", nil)
-	if err != nil {
-		t.Fatalf("second turn: %v", err)
-	}
+	require.NoError(t, err)
 	finalReply, status, err := engine.ProcessTurn(context.Background(), "session-1", "满意，已经解决了", nil)
-	if err != nil {
-		t.Fatalf("final turn: %v", err)
-	}
+	require.NoError(t, err)
 
 	state := engine.Snapshot("session-1")
-	if firstReply != DefaultSteps[0].Question {
-		t.Fatalf("unexpected first reply: %q", firstReply)
-	}
-	if !strings.Contains(secondReply, "好的，已经为您记录。") || !strings.Contains(secondReply, DefaultSteps[1].Question) {
-		t.Fatalf("unexpected second reply: %q", secondReply)
-	}
-	if !strings.Contains(finalReply, "好的，记录到您比较满意。") || !strings.Contains(finalReply, EndMessage) {
-		t.Fatalf("unexpected final reply: %q", finalReply)
-	}
-	if status != "completed" || state.Status != "completed" {
-		t.Fatalf("expected completed status, got response=%s state=%s", status, state.Status)
-	}
-	if state.Results["appointment_confirmed"]["intent"] != "yes" || state.Results["service_satisfied"]["intent"] != "yes" {
-		t.Fatalf("unexpected results: %#v", state.Results)
-	}
+	assert.Equal(t, DefaultSteps[0].Question, firstReply)
+	assert.Contains(t, secondReply, "好的，已经为您记录。")
+	assert.Contains(t, secondReply, DefaultSteps[1].Question)
+	assert.Contains(t, finalReply, "好的，记录到您比较满意。")
+	assert.Contains(t, finalReply, EndMessage)
+	assert.Equal(t, "completed", status)
+	assert.Equal(t, "completed", state.Status)
+	assert.Equal(t, "yes", state.Results["appointment_confirmed"]["intent"])
+	assert.Equal(t, "yes", state.Results["service_satisfied"]["intent"])
 }
 
 func TestDialogueEngineStoresBizParams(t *testing.T) {
@@ -49,14 +39,11 @@ func TestDialogueEngineStoresBizParams(t *testing.T) {
 		"customer_name": "张三",
 		"order_id":      "BL-001",
 	})
-	if err != nil {
-		t.Fatalf("process turn: %v", err)
-	}
+	require.NoError(t, err)
 
 	state := engine.Snapshot("session-biz")
-	if state.BizParams["customer_name"] != "张三" || state.BizParams["order_id"] != "BL-001" {
-		t.Fatalf("unexpected biz params: %#v", state.BizParams)
-	}
+	assert.Equal(t, "张三", state.BizParams["customer_name"])
+	assert.Equal(t, "BL-001", state.BizParams["order_id"])
 }
 
 func TestDialogueEngineHandlesSilenceThenTermination(t *testing.T) {
@@ -64,24 +51,16 @@ func TestDialogueEngineHandlesSilenceThenTermination(t *testing.T) {
 
 	_, _, _ = engine.ProcessTurn(context.Background(), "session-2", "", nil)
 	retryReply, _, err := engine.ProcessTurn(context.Background(), "session-2", "用户没有说话", nil)
-	if err != nil {
-		t.Fatalf("retry turn: %v", err)
-	}
+	require.NoError(t, err)
 	finalReply, status, err := engine.ProcessTurn(context.Background(), "session-2", "用户没有说话", nil)
-	if err != nil {
-		t.Fatalf("final turn: %v", err)
-	}
+	require.NoError(t, err)
 
 	state := engine.Snapshot("session-2")
-	if retryReply != TimeoutRetryPrompt {
-		t.Fatalf("expected retry prompt, got %q", retryReply)
-	}
-	if finalReply != TimeoutEndMessage || status != "terminated" {
-		t.Fatalf("expected termination, got reply=%q status=%s", finalReply, status)
-	}
-	if !state.Finished || state.Results["appointment_confirmed"]["status"] != "timeout" {
-		t.Fatalf("unexpected state: %#v", state)
-	}
+	assert.Equal(t, TimeoutRetryPrompt, retryReply)
+	assert.Equal(t, TimeoutEndMessage, finalReply)
+	assert.Equal(t, "terminated", status)
+	assert.True(t, state.Finished)
+	assert.Equal(t, "timeout", state.Results["appointment_confirmed"]["status"])
 }
 
 func TestDialogueEngineReturnsEndAfterFinish(t *testing.T) {
@@ -90,13 +69,9 @@ func TestDialogueEngineReturnsEndAfterFinish(t *testing.T) {
 	_, _, _ = engine.ProcessTurn(context.Background(), "session-3", "", nil)
 	_, _, _ = engine.ProcessTurn(context.Background(), "session-3", "有的，已经预约了", nil)
 	reply, _, err := engine.ProcessTurn(context.Background(), "session-3", "继续", nil)
-	if err != nil {
-		t.Fatalf("after finish: %v", err)
-	}
+	require.NoError(t, err)
 
-	if reply != EndMessage {
-		t.Fatalf("expected end message, got %q", reply)
-	}
+	assert.Equal(t, EndMessage, reply)
 }
 
 type fakeGeocoder struct{}
@@ -120,24 +95,16 @@ func TestDialogueEngineAddressConfirmation(t *testing.T) {
 
 	firstReply, _, _ := engine.ProcessTurn(context.Background(), "session-4", "", nil)
 	confirmReply, _, err := engine.ProcessTurn(context.Background(), "session-4", "广州海珠区轮头村八二路小家公寓", nil)
-	if err != nil {
-		t.Fatalf("address turn: %v", err)
-	}
+	require.NoError(t, err)
 	finalReply, _, err := engine.ProcessTurn(context.Background(), "session-4", "是的", nil)
-	if err != nil {
-		t.Fatalf("confirm turn: %v", err)
-	}
+	require.NoError(t, err)
 
 	state := engine.Snapshot("session-4")
-	if firstReply != DefaultSteps[2].Question {
-		t.Fatalf("unexpected first reply: %q", firstReply)
-	}
-	if !strings.Contains(confirmReply, "小家公寓") || !strings.Contains(confirmReply, "仑头村仑头路82号") {
-		t.Fatalf("unexpected confirm reply: %q", confirmReply)
-	}
-	if !strings.Contains(finalReply, EndMessage) || state.Results["address"]["status"] != "ok" {
-		t.Fatalf("unexpected final state reply=%q state=%#v", finalReply, state)
-	}
+	assert.Equal(t, DefaultSteps[2].Question, firstReply)
+	assert.Contains(t, confirmReply, "小家公寓")
+	assert.Contains(t, confirmReply, "仑头村仑头路82号")
+	assert.Contains(t, finalReply, EndMessage)
+	assert.Equal(t, "ok", state.Results["address"]["status"])
 }
 
 type blockingClassifier struct {

@@ -50,6 +50,7 @@ func CallbackToken(token string) gin.HandlerFunc {
 	}
 }
 
+// GatewayBearer 校验 Authorization: Bearer <token>，用于保护 /v1 网关路由。
 func GatewayBearer(token string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if strings.TrimSpace(token) == "" {

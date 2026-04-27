@@ -6,6 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResolvePlaceMergesInputTipsPOIAndVerifiesCandidates(t *testing.T) {
@@ -38,33 +41,26 @@ func TestResolvePlaceMergesInputTipsPOIAndVerifiesCandidates(t *testing.T) {
 		Timeout: time.Second,
 	})
 	result, err := client.ResolvePlace(context.Background(), "小家公寓")
-	if err != nil {
-		t.Fatalf("resolve place: %v", err)
-	}
+	require.NoError(t, err)
 
-	if seen["/assistant/inputtips"] != 1 || seen["/place/text"] != 1 || seen["/geocode/geo"] != 2 {
-		t.Fatalf("unexpected calls: %#v", seen)
-	}
-	if !result.Found || result.Best == nil {
-		t.Fatalf("expected best result, got %#v", result)
-	}
-	if result.Best.Name != "小家公寓" || result.Best.Source != "input_tips" || !result.Best.PrecisionOK {
-		t.Fatalf("unexpected best candidate: %#v", result.Best)
-	}
-	if len(result.Candidates) != 2 || len(result.Tips) != 1 || len(result.POIs) != 1 {
-		t.Fatalf("unexpected merged result: %#v", result)
-	}
+	assert.Equal(t, 1, seen["/assistant/inputtips"])
+	assert.Equal(t, 1, seen["/place/text"])
+	assert.Equal(t, 2, seen["/geocode/geo"])
+	require.True(t, result.Found)
+	require.NotNil(t, result.Best)
+	assert.Equal(t, "小家公寓", result.Best.Name)
+	assert.Equal(t, "input_tips", result.Best.Source)
+	assert.True(t, result.Best.PrecisionOK)
+	assert.Len(t, result.Candidates, 2)
+	assert.Len(t, result.Tips, 1)
+	assert.Len(t, result.POIs, 1)
 }
 
 func TestResolvePlaceReturnsUnconfiguredError(t *testing.T) {
 	client := New(Config{})
 	result, err := client.ResolvePlace(context.Background(), "小家公寓")
-	if err != nil {
-		t.Fatalf("resolve place: %v", err)
-	}
-	if result.Error != "未配置 AMAP_KEY" {
-		t.Fatalf("unexpected error: %#v", result)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "未配置 AMAP_KEY", result.Error)
 }
 
 func TestResolvePlaceCapsCandidateVerification(t *testing.T) {
@@ -100,16 +96,10 @@ func TestResolvePlaceCapsCandidateVerification(t *testing.T) {
 		Timeout: time.Second,
 	})
 	result, err := client.ResolvePlace(context.Background(), "地点")
-	if err != nil {
-		t.Fatalf("resolve place: %v", err)
-	}
+	require.NoError(t, err)
 
-	if !result.Found {
-		t.Fatalf("expected found result: %#v", result)
-	}
-	if geocodeCalls != defaultVerifyCandidateLimit {
-		t.Fatalf("expected %d geocode calls, got %d", defaultVerifyCandidateLimit, geocodeCalls)
-	}
+	assert.True(t, result.Found)
+	assert.Equal(t, defaultVerifyCandidateLimit, geocodeCalls)
 }
 
 func TestResolvePlaceHonorsTotalTimeout(t *testing.T) {
@@ -127,10 +117,6 @@ func TestResolvePlaceHonorsTotalTimeout(t *testing.T) {
 	startedAt := time.Now()
 	_, err := client.ResolvePlace(context.Background(), "小家公寓")
 	elapsed := time.Since(startedAt)
-	if err == nil {
-		t.Fatal("expected timeout error")
-	}
-	if elapsed > 150*time.Millisecond {
-		t.Fatalf("resolve should honor total timeout, elapsed=%s", elapsed)
-	}
+	require.Error(t, err, "expected timeout error")
+	assert.LessOrEqual(t, elapsed, 150*time.Millisecond, "resolve should honor total timeout")
 }

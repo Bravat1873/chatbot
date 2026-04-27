@@ -11,6 +11,8 @@ import (
 	"chatbot/internal/model"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeCallService struct{}
@@ -44,19 +46,12 @@ func TestCallbackRouteRequiresToken(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", resp.Code)
-	}
+	assert.Equal(t, http.StatusUnauthorized, resp.Code)
 	var responseBody map[string]any
-	if err := json.Unmarshal(resp.Body.Bytes(), &responseBody); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if responseBody["ok"] != false || responseBody["message"] != "unauthorized" {
-		t.Fatalf("unexpected response body: %#v", responseBody)
-	}
-	if callbackSvc.called {
-		t.Fatal("callback service should not be called when unauthorized")
-	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
+	assert.Equal(t, false, responseBody["ok"])
+	assert.Equal(t, "unauthorized", responseBody["message"])
+	assert.False(t, callbackSvc.called, "callback service should not be called when unauthorized")
 }
 
 func TestCallbackRouteAcceptsJSONPayload(t *testing.T) {
@@ -76,17 +71,9 @@ func TestCallbackRouteAcceptsJSONPayload(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.Code)
-	}
+	assert.Equal(t, http.StatusOK, resp.Code)
 	var responseBody map[string]any
-	if err := json.Unmarshal(resp.Body.Bytes(), &responseBody); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if responseBody["ok"] != true {
-		t.Fatalf("unexpected response body: %#v", responseBody)
-	}
-	if !callbackSvc.called {
-		t.Fatal("expected callback service to be called")
-	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &responseBody))
+	assert.Equal(t, true, responseBody["ok"])
+	assert.True(t, callbackSvc.called, "expected callback service to be called")
 }

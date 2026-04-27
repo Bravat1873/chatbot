@@ -1,3 +1,4 @@
+// 健康检查端点：提供 /healthz 路由，可选地检查数据库连通性。
 package handler
 
 import (

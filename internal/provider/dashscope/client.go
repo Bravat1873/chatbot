@@ -1,3 +1,4 @@
+// DashScope (阿里云百炼) Provider：封装兼容 OpenAI 协议的 Chat Completion API，实现 core.LLMClient 接口。
 package dashscope
 
 import (
@@ -14,6 +15,7 @@ import (
 
 const defaultBaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
+// Client DashScope API 客户端，实现 core.LLMClient 接口。
 type Client struct {
 	apiKey     string
 	baseURL    string
@@ -21,6 +23,7 @@ type Client struct {
 	httpClient *http.Client
 }
 
+// Config DashScope 客户端配置。
 type Config struct {
 	APIKey  string
 	BaseURL string
@@ -28,6 +31,7 @@ type Config struct {
 	Timeout time.Duration
 }
 
+// New 创建 DashScope 客户端实例。
 func New(config Config) *Client {
 	baseURL := strings.TrimRight(strings.TrimSpace(config.BaseURL), "/")
 	if baseURL == "" {
@@ -47,6 +51,7 @@ func New(config Config) *Client {
 	}
 }
 
+// GenerateJSON 调用 LLM 生成结构化 JSON 响应，关闭思考链以加快推理速度。
 func (c *Client) GenerateJSON(ctx context.Context, req core.LLMRequest) (string, error) {
 	if c.apiKey == "" {
 		return "", fmt.Errorf("dashscope api key is empty")

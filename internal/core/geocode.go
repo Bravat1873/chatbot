@@ -1,3 +1,4 @@
+// 地理编码与地址匹配层：地点候选排序、地址差异提取、确认话术模板。
 package core
 
 import (
@@ -8,6 +9,7 @@ import (
 	"strings"
 )
 
+// PlaceCandidate 地点候选结果，包含名称、地址、相似度评分及验证信息。
 type PlaceCandidate struct {
 	Name        string
 	Address     string
@@ -28,6 +30,7 @@ type PlaceCandidate struct {
 	Raw         map[string]any
 }
 
+// GeocodeResult 地理编码查询结果，包含最佳匹配、候选列表及错误信息。
 type GeocodeResult struct {
 	Found      bool
 	Best       *PlaceCandidate
@@ -37,6 +40,7 @@ type GeocodeResult struct {
 	Error      string
 }
 
+// AddressVerifyResult 高德地址复核（geocode/geo）返回的验证结果。
 type AddressVerifyResult struct {
 	Success     bool
 	Formatted   string
@@ -47,10 +51,12 @@ type AddressVerifyResult struct {
 	Raw         map[string]any
 }
 
+// Geocoder 地理编码接口，由高德等 Provider 实现。
 type Geocoder interface {
 	ResolvePlace(ctx context.Context, keywords string) (GeocodeResult, error)
 }
 
+// AddressConfirmationInput 地址确认话术生成的输入参数。
 type AddressConfirmationInput struct {
 	OriginalText   string
 	MatchedText    string
@@ -140,6 +146,7 @@ func addressNeedsConfirmation(originalText string, candidate PlaceCandidate) boo
 	return original != compareText
 }
 
+// MergePlaceCandidates 合并 InputTips 和 POI 搜索结果，去重、评分、排序后返回。
 func MergePlaceCandidates(query string, tips []PlaceCandidate, pois []PlaceCandidate, city string, verify func(string, string) AddressVerifyResult) []PlaceCandidate {
 	_ = city
 	deduped := make(map[string]PlaceCandidate)
@@ -190,10 +197,12 @@ func MergePlaceCandidates(query string, tips []PlaceCandidate, pois []PlaceCandi
 	return candidates
 }
 
+// BuildDisplayText 拼接省市区+地址+名称，去重后生成展示文本。
 func BuildDisplayText(name string, address string, district string) string {
 	return buildDisplayText(name, address, district)
 }
 
+// IsPreciseEnough 判断地址是否精细到门牌号/楼栋/兴趣点级别。
 func IsPreciseEnough(level string, formattedAddress string) bool {
 	for _, keyword := range preciseLevelKeywords {
 		if strings.Contains(level, keyword) {
