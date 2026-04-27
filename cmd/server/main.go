@@ -63,12 +63,16 @@ func main() {
 	// 组装依赖链：仓库 -> 服务 -> 路由
 	repo := repository.NewCallTaskRepository(pool)
 	callService := service.NewCallService(logger, repo, provider, cfg.CallerNumber, cfg.AICCSAppCode, cfg.SessionTimeoutSeconds)
+	dialogueService := service.NewDialogueService()
 	router := handler.NewRouter(handler.RouterDeps{
 		Logger:           logger,
 		CallService:      callService,
 		CallbackService:  callService,
+		DialogueService:  dialogueService,
 		InternalAPIToken: cfg.InternalAPIToken,
 		CallbackAPIToken: cfg.AICCSCallbackToken,
+		GatewayAuthToken: cfg.GatewayAuthToken,
+		DefaultLLMModel:  cfg.LLMModel,
 		HealthCheck: func(ctx context.Context) error {
 			return pool.Ping(ctx) // 健康检查：ping 数据库
 		},

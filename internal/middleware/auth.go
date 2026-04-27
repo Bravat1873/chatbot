@@ -49,3 +49,19 @@ func CallbackToken(token string) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+func GatewayBearer(token string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if strings.TrimSpace(token) == "" {
+			c.Next()
+			return
+		}
+		authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+		provided := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+		if provided != token {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"detail": "Unauthorized"})
+			return
+		}
+		c.Next()
+	}
+}

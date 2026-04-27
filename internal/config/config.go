@@ -17,6 +17,8 @@ type Config struct {
 	LogLevel           string
 	InternalAPIToken   string
 	AICCSCallbackToken string
+	GatewayAuthToken   string
+	LLMModel           string
 
 	AliyunAccessKeyID     string
 	AliyunAccessKeySecret string
@@ -46,6 +48,8 @@ func Load() (Config, error) {
 		LogLevel:              getEnv("LOG_LEVEL", "info"),
 		InternalAPIToken:      strings.TrimSpace(os.Getenv("INTERNAL_API_TOKEN")),
 		AICCSCallbackToken:    strings.TrimSpace(os.Getenv("AICCS_CALLBACK_TOKEN")),
+		GatewayAuthToken:      strings.TrimSpace(os.Getenv("GATEWAY_AUTH_TOKEN")),
+		LLMModel:              getEnv("LLM_MODEL", "qwen3.5-flash"),
 		AliyunAccessKeyID:     strings.TrimSpace(os.Getenv("ALIYUN_ACCESS_KEY_ID")),
 		AliyunAccessKeySecret: strings.TrimSpace(os.Getenv("ALIYUN_ACCESS_KEY_SECRET")),
 		AICCSAppCode:          strings.TrimSpace(os.Getenv("AICCS_APP_CODE")),

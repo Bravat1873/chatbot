@@ -27,19 +27,27 @@ type RouterDeps struct {
 	Logger           *slog.Logger
 	CallService      CallService
 	CallbackService  CallbackService
+	DialogueService  DialogueService
 	InternalAPIToken string
 	CallbackAPIToken string
+	GatewayAuthToken string
+	DefaultLLMModel  string
 	HealthCheck      func(context.Context) error
 }
 
 // NewRouter 创建 gin Engine，注册全局中间件和业务路由分组。
 func NewRouter(deps RouterDeps) *gin.Engine {
 	router := gin.New()
-	router.Use(gin.Recovery())                           // panic 恢复
-	router.Use(middleware.RequestLogger(deps.Logger))    // 请求日志
+	router.Use(gin.Recovery())                        // panic 恢复
+	router.Use(middleware.RequestLogger(deps.Logger)) // 请求日志
 
 	// 健康检查路由
 	router.GET("/healthz", Healthz(deps.HealthCheck))
+
+	// 文本网关：兼容 OpenAI / 阿里云大模型网关 SSE 协议
+	gatewayGroup := router.Group("/v1")
+	gatewayGroup.Use(middleware.GatewayBearer(deps.GatewayAuthToken))
+	gatewayGroup.POST("/chat/completions", ChatCompletions(deps.Logger, deps.DialogueService, deps.DefaultLLMModel))
 
 	// 内部 API：创建外呼任务（需要 X-Internal-Token 鉴权）
 	internalGroup := router.Group("/internal")
