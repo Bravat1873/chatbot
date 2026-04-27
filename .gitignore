@@ -28,3 +28,8 @@ htmlcov/
 # Project-specific
 .ace-tool/
 .claude/
+
+# Go
+bin/
+*.test
+coverage.out

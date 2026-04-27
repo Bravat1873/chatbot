@@ -1,18 +1,41 @@
 services:
-  gateway:
+  postgres:
+    image: postgres:16-alpine
+    container_name: beilang-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PG_DATABASE:-beilang_callbot}
+      POSTGRES_USER: ${PG_USER:-beilang}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-replace_me}
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-beilang} -d ${PG_DATABASE:-beilang_callbot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app-go:
     build:
       context: .
       dockerfile: Dockerfile
-    image: beilang-chatbot-gateway:latest
-    container_name: beilang-gateway
+    container_name: beilang-app-go
     restart: unless-stopped
     env_file:
       - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
-      - "${GATEWAY_PORT:-8000}:8000"
+      - "${APP_PORT:-8080}:8080"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 15s
       timeout: 5s
-      retries: 3
+      retries: 5
       start_period: 10s
+
+volumes:
+  pgdata:
