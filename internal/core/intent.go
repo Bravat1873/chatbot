@@ -22,6 +22,7 @@ type IntentResult struct {
 
 type IntentClassifier interface {
 	Classify(ctx context.Context, text string, context IntentContext) (IntentResult, error)
+	GenerateAddressConfirmation(ctx context.Context, input AddressConfirmationInput) (string, error)
 }
 
 type HeuristicIntentClassifier struct{}
@@ -86,6 +87,14 @@ func (c *HeuristicIntentClassifier) Classify(ctx context.Context, text string, c
 		return IntentResult{Intent: "address", Address: extractAddress(normalized), Confidence: "medium", Source: "heuristic", RawText: text}, nil
 	}
 	return IntentResult{Intent: "unclear", Confidence: "low", Source: "heuristic", RawText: text}, nil
+}
+
+func (c *HeuristicIntentClassifier) GenerateAddressConfirmation(ctx context.Context, input AddressConfirmationInput) (string, error) {
+	_ = ctx
+	if input.FallbackPrompt != "" {
+		return input.FallbackPrompt, nil
+	}
+	return fallbackAddressPrompt(firstNonEmpty(input.FocusText, input.MatchedText), input.MatchedName), nil
 }
 
 func isNegated(text string, idx int) bool {

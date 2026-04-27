@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"strings"
 	"sync"
 )
 
@@ -221,26 +222,85 @@ func (e *DialogueEngine) handleAddressStep(ctx context.Context, state *SessionSt
 		state.Results["address"] = map[string]any{"status": "not_found", "text": userText, "intent": classified.Intent}
 		return e.advanceWithReply(state, "好的，地址已记录，后续会由人工进一步核实。")
 	}
-	if e.geocoder != nil {
-		searchText := classified.Address
-		if searchText == "" {
-			searchText = userText
-		}
-		result, err := e.geocoder.ResolvePlace(ctx, searchText)
-		if err == nil && result.Found && result.Best != nil {
-			state.AwaitingAddressConfirm = true
-			state.PendingAddressCandidate = map[string]any{
-				"name":         result.Best.Name,
-				"address":      result.Best.Address,
-				"district":     result.Best.District,
-				"display_text": result.Best.DisplayText,
+	if e.geocoder == nil {
+		state.Results["address"] = map[string]any{"status": "unverified", "text": userText, "intent": classified.Intent}
+		return e.advanceWithReply(state, "好的，地址已记录。当前环境暂时无法完成地点搜索。")
+	}
+
+	searchText := classified.Address
+	if searchText == "" {
+		searchText = userText
+	}
+	result, err := e.geocoder.ResolvePlace(ctx, searchText)
+	if err == nil && strings.HasPrefix(result.Error, "未配置 AMAP_KEY") {
+		state.Results["address"] = map[string]any{"status": "unverified", "text": userText, "intent": "address"}
+		return e.advanceWithReply(state, "好的，地址已记录。当前环境暂时无法完成地点搜索。")
+	}
+	if err == nil && result.Found && result.Best != nil {
+		candidate := result.Best
+		if !addressNeedsConfirmation(searchText, *candidate) {
+			state.Results["address"] = map[string]any{
+				"status": "ok",
+				"text":   userText,
+				"intent": "address",
+				"place":  placeCandidateMap(*candidate),
 			}
-			state.PendingAddressText = userText
-			return recordBotReply(state, buildAddressConfirmationPrompt(searchText, *result.Best))
+			return e.advanceWithReply(state, "好的，地址已记录。")
+		}
+		state.AwaitingAddressConfirm = true
+		state.PendingAddressCandidate = placeCandidateMap(*candidate)
+		state.PendingAddressText = userText
+		return recordBotReply(state, e.buildAddressConfirmationTurn(ctx, searchText, *candidate))
+	}
+	if state.AddressRetries < e.maxAddressRetries {
+		state.AddressRetries++
+		return recordBotReply(state, AddressRetryPrompt)
+	}
+	state.Results["address"] = map[string]any{"status": "not_found", "text": userText, "intent": "address"}
+	return e.advanceWithReply(state, "好的，地址已记录，后续会由人工进一步核实。")
+}
+
+func (e *DialogueEngine) buildAddressConfirmationTurn(ctx context.Context, originalText string, candidate PlaceCandidate) string {
+	matchedText := meaningfulCandidateText(candidate)
+	focusText := extractAddressDifference(originalText, matchedText)
+	fallback := buildAddressConfirmationPrompt(originalText, candidate)
+	prompt, err := e.classifier.GenerateAddressConfirmation(ctx, AddressConfirmationInput{
+		OriginalText:   originalText,
+		MatchedText:    matchedText,
+		MatchedName:    candidate.Name,
+		FocusText:      focusText,
+		FallbackPrompt: fallback,
+	})
+	if err != nil || strings.TrimSpace(prompt) == "" {
+		return fallback
+	}
+	return prompt
+}
+
+func placeCandidateMap(candidate PlaceCandidate) map[string]any {
+	value := map[string]any{
+		"name":         candidate.Name,
+		"address":      candidate.Address,
+		"district":     candidate.District,
+		"location":     candidate.Location,
+		"display_text": candidate.DisplayText,
+		"source":       candidate.Source,
+		"formatted":    candidate.Formatted,
+		"compare_text": candidate.CompareText,
+		"precision_ok": candidate.PrecisionOK,
+		"score":        candidate.Score,
+	}
+	if candidate.Verify != nil {
+		value["verify"] = map[string]any{
+			"success":      candidate.Verify.Success,
+			"formatted":    candidate.Verify.Formatted,
+			"level":        candidate.Verify.Level,
+			"location":     candidate.Verify.Location,
+			"precision_ok": candidate.Verify.PrecisionOK,
+			"error":        candidate.Verify.Error,
 		}
 	}
-	state.Results["address"] = map[string]any{"status": "unverified", "text": userText, "intent": classified.Intent}
-	return e.advanceWithReply(state, "好的，地址已记录。当前环境暂时无法完成地点搜索。")
+	return value
 }
 
 func (e *DialogueEngine) handleAddressConfirmation(ctx context.Context, state *SessionState, userText string) string {
