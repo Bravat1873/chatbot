@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"sync"
+
+	"chatbot/internal/model"
 )
 
 // 对话流程中的固定话术常量。
@@ -51,9 +53,28 @@ func DefaultFlowSteps() []DialogueStep {
 	return append([]DialogueStep(nil), DefaultSteps[:2]...)
 }
 
+// AddressVerifyFlowSteps 返回地址核实流程步骤的副本。
+func AddressVerifyFlowSteps() []DialogueStep {
+	return []DialogueStep{DefaultSteps[2]}
+}
+
+// FlowStepsForBizType 根据业务场景返回对应状态机流程。
+func FlowStepsForBizType(bizType string) ([]DialogueStep, bool) {
+	switch model.NormalizeBizType(bizType) {
+	case "", model.BizTypeWorkorderAppointment:
+		return DefaultFlowSteps(), true
+	case model.BizTypeAddressVerify:
+		return AddressVerifyFlowSteps(), true
+	default:
+		return nil, false
+	}
+}
+
 // SessionState 记录单个会话的运行态，包括当前步骤、重试计数、已采集结果和对话抄本。
 type SessionState struct {
 	StepIndex               int
+	FlowKey                 string
+	Steps                   []DialogueStep
 	UnclearRetries          int
 	TimeoutRetries          int
 	AddressRetries          int
@@ -74,7 +95,7 @@ type DialogueEngine struct {
 	sessionLocks      map[string]*sync.Mutex
 	classifier        IntentClassifier
 	geocoder          Geocoder
-	steps             []DialogueStep
+	defaultSteps      []DialogueStep
 	maxUnclearRetries int
 	maxTimeoutRetries int
 	maxAddressRetries int
@@ -97,7 +118,7 @@ func NewDialogueEngine(classifier IntentClassifier, steps []DialogueStep, geocod
 		sessionLocks:      make(map[string]*sync.Mutex),
 		classifier:        classifier,
 		geocoder:          geocoder,
-		steps:             append([]DialogueStep(nil), steps...),
+		defaultSteps:      append([]DialogueStep(nil), steps...),
 		maxUnclearRetries: 2,
 		maxTimeoutRetries: 1,
 		maxAddressRetries: 2,
@@ -110,7 +131,7 @@ func (e *DialogueEngine) ProcessTurn(ctx context.Context, sessionID string, user
 	sessionLock.Lock()
 	defer sessionLock.Unlock()
 
-	state := e.getOrCreate(sessionID)
+	state := e.getOrCreate(sessionID, bizParams)
 	if bizParams != nil {
 		state.BizParams = copyMap(bizParams)
 	}
@@ -191,26 +212,41 @@ func (e *DialogueEngine) lockForSession(sessionID string) *sync.Mutex {
 	return lock
 }
 
-func (e *DialogueEngine) getOrCreate(sessionID string) *SessionState {
+func (e *DialogueEngine) getOrCreate(sessionID string, bizParams map[string]any) *SessionState {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if state, ok := e.sessions[sessionID]; ok {
 		return state
 	}
+	flowKey, steps := e.stepsForSession(bizParams)
 	state := &SessionState{
 		Results:   make(map[string]map[string]any),
 		BizParams: make(map[string]any),
+		FlowKey:   flowKey,
+		Steps:     steps,
 		Status:    "in_progress",
 	}
 	e.sessions[sessionID] = state
 	return state
 }
 
+func (e *DialogueEngine) stepsForSession(bizParams map[string]any) (string, []DialogueStep) {
+	bizType := bizTypeFromParams(bizParams)
+	if strings.TrimSpace(bizType) == "" {
+		return string(model.BizTypeWorkorderAppointment), append([]DialogueStep(nil), e.defaultSteps...)
+	}
+	if steps, ok := FlowStepsForBizType(bizType); ok {
+		flowKey := string(model.NormalizeBizType(bizType))
+		return flowKey, steps
+	}
+	return bizType, append([]DialogueStep(nil), e.defaultSteps...)
+}
+
 func (e *DialogueEngine) currentStep(state *SessionState) *DialogueStep {
-	if state.StepIndex >= len(e.steps) {
+	if state.StepIndex >= len(state.Steps) {
 		return nil
 	}
-	return &e.steps[state.StepIndex]
+	return &state.Steps[state.StepIndex]
 }
 
 func (e *DialogueEngine) currentPrompt(state *SessionState) string {
@@ -413,13 +449,13 @@ func (e *DialogueEngine) advanceWithReply(state *SessionState, prefix string) st
 	state.PendingAddressText = ""
 
 	var reply string
-	if state.StepIndex >= len(e.steps) {
+	if state.StepIndex >= len(state.Steps) {
 		state.Finished = true
 		state.Status = "completed"
 		reply = prefix + EndMessage
 	} else {
 		state.Status = "in_progress"
-		reply = prefix + e.steps[state.StepIndex].Question
+		reply = prefix + state.Steps[state.StepIndex].Question
 	}
 	return recordBotReply(state, reply)
 }
@@ -472,4 +508,15 @@ func copyMap(input map[string]any) map[string]any {
 		output[key] = value
 	}
 	return output
+}
+
+func bizTypeFromParams(params map[string]any) string {
+	for _, key := range []string{"biz_type", "scene", "scenario"} {
+		if value, ok := params[key]; ok {
+			if text, ok := value.(string); ok {
+				return strings.TrimSpace(text)
+			}
+		}
+	}
+	return ""
 }

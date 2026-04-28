@@ -88,9 +88,10 @@ func (e *APIError) Unwrap() error {
 // 流程：参数校验 -> 写入 DB（状态=created） -> 调用阿里云 API -> 更新状态（accepted/failed）。
 func (s *CallService) CreateCallTask(ctx context.Context, req model.CreateCallTaskRequest) (*model.CallTask, error) {
 	// 基础参数校验
-	if strings.TrimSpace(req.CalledNumber) == "" || strings.TrimSpace(req.BizType) == "" {
-		return nil, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request"}
+	if apiErr := validateCreateCallTaskRequest(req); apiErr != nil {
+		return nil, apiErr
 	}
+	bizType := string(model.NormalizeBizType(req.BizType))
 	requestedBy := strings.TrimSpace(req.RequestedBy)
 	if requestedBy == "" {
 		requestedBy = "manual"
@@ -108,7 +109,7 @@ func (s *CallService) CreateCallTask(ctx context.Context, req model.CreateCallTa
 	task := &model.CallTask{
 		TaskID:       uuid.New(),
 		Provider:     providerName,
-		BizType:      req.BizType,
+		BizType:      bizType,
 		BizParams:    bizParams,
 		RequestedBy:  requestedBy,
 		CalledNumber: req.CalledNumber,
@@ -130,13 +131,14 @@ func (s *CallService) CreateCallTask(ctx context.Context, req model.CreateCallTa
 	if s.logger != nil {
 		s.logger.Info("call_submit_started", "task_id", task.TaskID.String())
 	}
+	providerBizParams := buildProviderBizParams(req.BizParams, bizType, task.TaskID)
 	// 提交到阿里云 AICCS
 	result, err := s.provider.SubmitCall(ctx, SubmitCallRequest{
 		CalledNumber:         req.CalledNumber,
 		CallerNumber:         s.callerNumber,
 		ApplicationCode:      s.appCode,
 		SessionTimeoutSecond: s.sessionTimeout,
-		BizParams:            req.BizParams,
+		BizParams:            providerBizParams,
 	})
 	// 提交失败：回写失败状态
 	if err != nil {
@@ -169,6 +171,26 @@ func (s *CallService) CreateCallTask(ctx context.Context, req model.CreateCallTa
 		s.logger.Info("call_submit_succeeded", "task_id", task.TaskID.String(), "call_id", result.CallID)
 	}
 	return acceptedTask, nil
+}
+
+func validateCreateCallTaskRequest(req model.CreateCallTaskRequest) *APIError {
+	if strings.TrimSpace(req.CalledNumber) == "" || strings.TrimSpace(req.BizType) == "" {
+		return &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request"}
+	}
+	if !model.IsSupportedBizType(req.BizType) {
+		return &APIError{StatusCode: http.StatusBadRequest, Message: "unsupported biz_type"}
+	}
+	return nil
+}
+
+func buildProviderBizParams(input map[string]any, bizType string, taskID uuid.UUID) map[string]any {
+	output := make(map[string]any, len(input)+2)
+	for key, value := range input {
+		output[key] = value
+	}
+	output["biz_type"] = string(model.NormalizeBizType(bizType))
+	output["task_id"] = taskID.String()
+	return output
 }
 
 // HandleCallReport 处理运营商回调报告：归一化载荷 -> 状态推导 -> 仓库事务写入。

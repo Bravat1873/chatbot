@@ -46,6 +46,52 @@ func TestDialogueEngineStoresBizParams(t *testing.T) {
 	assert.Equal(t, "BL-001", state.BizParams["order_id"])
 }
 
+func TestFlowStepsForBizType(t *testing.T) {
+	defaultSteps, ok := FlowStepsForBizType("workorder_appointment")
+	require.True(t, ok)
+	assert.Equal(t, "appointment_confirmed", defaultSteps[0].Key)
+
+	addressSteps, ok := FlowStepsForBizType("address_verify")
+	require.True(t, ok)
+	require.Len(t, addressSteps, 1)
+	assert.Equal(t, "address", addressSteps[0].Key)
+
+	_, ok = FlowStepsForBizType("unknown")
+	assert.False(t, ok)
+}
+
+func TestDialogueEngineSelectsAddressFlowFromBizParams(t *testing.T) {
+	engine := NewDialogueEngine(NewHeuristicIntentClassifier(), DefaultFlowSteps())
+
+	reply, _, err := engine.ProcessTurn(context.Background(), "session-address", "", map[string]any{
+		"biz_type": "address_verify",
+	})
+	require.NoError(t, err)
+
+	state := engine.Snapshot("session-address")
+	assert.Equal(t, DefaultSteps[2].Question, reply)
+	assert.Equal(t, "address_verify", state.FlowKey)
+	require.Len(t, state.Steps, 1)
+	assert.Equal(t, "address", state.Steps[0].Key)
+}
+
+func TestDialogueEngineKeepsInitialFlowForSession(t *testing.T) {
+	engine := NewDialogueEngine(NewHeuristicIntentClassifier(), DefaultFlowSteps())
+
+	firstReply, _, err := engine.ProcessTurn(context.Background(), "session-fixed", "", map[string]any{
+		"biz_type": "address_verify",
+	})
+	require.NoError(t, err)
+	secondReply, _, err := engine.ProcessTurn(context.Background(), "session-fixed", "", map[string]any{
+		"biz_type": "workorder_appointment",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, DefaultSteps[2].Question, firstReply)
+	assert.Equal(t, DefaultSteps[2].Question, secondReply)
+	assert.Equal(t, "address_verify", engine.Snapshot("session-fixed").FlowKey)
+}
+
 func TestDialogueEngineHandlesSilenceThenTermination(t *testing.T) {
 	engine := NewDialogueEngine(NewHeuristicIntentClassifier(), DefaultFlowSteps())
 

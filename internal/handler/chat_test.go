@@ -70,6 +70,33 @@ func TestChatCompletionsStreamsSSEReply(t *testing.T) {
 	assert.True(t, strings.HasPrefix(first.ID, "chatcmpl-"))
 }
 
+func TestChatCompletionsAcceptsAliyunInputEnvelope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	dialogueSvc := &stubDialogueService{reply: "收到。"}
+	router := NewRouter(RouterDeps{
+		CallService:      &fakeCallService{},
+		CallbackService:  &fakeCallbackService{},
+		DialogueService:  dialogueSvc,
+		GatewayAuthToken: "secret",
+		DefaultLLMModel:  "default-model",
+	})
+
+	body := `{"call_id":"call-123","input":{"biz_params":{"biz_type":"address_verify","order_id":"ADDR-001"},"messages":[{"role":"assistant","content":"您好"},{"role":"user","content":"广州海珠区仑头村仑头路82号"}]}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer secret")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, "call-123", dialogueSvc.req.SessionID)
+	assert.Equal(t, "广州海珠区仑头村仑头路82号", dialogueSvc.req.UserText)
+	assert.Equal(t, "address_verify", dialogueSvc.req.BizParams["biz_type"])
+	assert.Equal(t, "ADDR-001", dialogueSvc.req.BizParams["order_id"])
+	assert.Len(t, dialogueSvc.req.Messages, 2)
+}
+
 func TestChatCompletionsRequiresAuthWhenTokenConfigured(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := NewRouter(RouterDeps{

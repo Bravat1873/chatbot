@@ -5,9 +5,18 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+)
+
+// BizType 表示外呼业务场景标识。
+type BizType string
+
+const (
+	BizTypeWorkorderAppointment BizType = "workorder_appointment"
+	BizTypeAddressVerify        BizType = "address_verify"
 )
 
 // CallStatus 表示外呼任务的生命周期状态。
@@ -165,4 +174,19 @@ func isFailureCode(statusCode, smartStatusCode *string) bool {
 		}
 	}
 	return false
+}
+
+// NormalizeBizType 规范化外部传入的业务场景标识。
+func NormalizeBizType(value string) BizType {
+	return BizType(strings.ToLower(strings.TrimSpace(value)))
+}
+
+// IsSupportedBizType 判断当前业务场景是否已接入状态机分流。
+func IsSupportedBizType(value string) bool {
+	switch NormalizeBizType(value) {
+	case BizTypeWorkorderAppointment, BizTypeAddressVerify:
+		return true
+	default:
+		return false
+	}
 }

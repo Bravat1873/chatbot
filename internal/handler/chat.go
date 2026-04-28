@@ -39,7 +39,7 @@ func ChatCompletions(logger *slog.Logger, svc DialogueService, defaultModel stri
 				SessionID: sessionID,
 				UserText:  req.UserText(),
 				BizParams: req.CoerceBizParams(),
-				Messages:  req.Messages,
+				Messages:  req.NormalizedMessages(),
 			})
 			if err != nil {
 				if logger != nil {
