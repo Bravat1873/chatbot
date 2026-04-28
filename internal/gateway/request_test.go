@@ -29,6 +29,9 @@ func TestChatCompletionRequestSupportsAliyunInputEnvelope(t *testing.T) {
 	assert.Equal(t, "call-123", req.NormalizedSessionID())
 	assert.Equal(t, "广州海珠区仑头村仑头路82号", req.UserText())
 	assert.Len(t, req.NormalizedMessages(), 2)
+	assert.Equal(t, "input", req.BizParamsSource())
+	assert.Equal(t, "input", req.MessagesSource())
+	assert.Equal(t, "address_verify", req.BizType())
 	bizParams := req.CoerceBizParams()
 	assert.Equal(t, "address_verify", bizParams["biz_type"])
 	assert.Equal(t, "ADDR-001", bizParams["order_id"])
@@ -51,5 +54,8 @@ func TestChatCompletionRequestPrefersTopLevelFields(t *testing.T) {
 
 	assert.Equal(t, "session-1", req.NormalizedSessionID())
 	assert.Equal(t, "顶层消息", req.UserText())
+	assert.Equal(t, "top_level", req.BizParamsSource())
+	assert.Equal(t, "top_level", req.MessagesSource())
+	assert.Equal(t, "workorder_appointment", req.BizType())
 	assert.Equal(t, "workorder_appointment", req.CoerceBizParams()["biz_type"])
 }

@@ -33,13 +33,28 @@ func ChatCompletions(logger *slog.Logger, svc DialogueService, defaultModel stri
 			model = defaultModel
 		}
 
+		messages := req.NormalizedMessages()
+		bizParams := req.CoerceBizParams()
+		userText := req.UserText()
+		if logger != nil {
+			logger.Info("chat_gateway_request_received",
+				"session_id", sessionID,
+				"call_id_present", req.CallID != "",
+				"biz_params_source", req.BizParamsSource(),
+				"biz_type", req.BizType(),
+				"messages_source", req.MessagesSource(),
+				"messages_count", len(messages),
+				"user_text_present", userText != "",
+			)
+		}
+
 		reply := safeFallbackReply
 		if svc != nil {
 			resp, err := svc.ProcessTurn(c.Request.Context(), gateway.TurnRequest{
 				SessionID: sessionID,
-				UserText:  req.UserText(),
-				BizParams: req.CoerceBizParams(),
-				Messages:  req.NormalizedMessages(),
+				UserText:  userText,
+				BizParams: bizParams,
+				Messages:  messages,
 			})
 			if err != nil {
 				if logger != nil {

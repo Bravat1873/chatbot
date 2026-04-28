@@ -3,6 +3,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -74,6 +75,28 @@ func (r ChatCompletionRequest) NormalizedMessages() []ChatMessage {
 	return r.Input.Messages
 }
 
+// BizParamsSource 返回当前使用的业务参数来源，便于脱敏诊断日志判断阿里云是否回传 BizParam。
+func (r ChatCompletionRequest) BizParamsSource() string {
+	if len(r.BizParams) > 0 {
+		return "top_level"
+	}
+	if len(r.Input.BizParams) > 0 {
+		return "input"
+	}
+	return "missing"
+}
+
+// MessagesSource 返回当前使用的消息来源。
+func (r ChatCompletionRequest) MessagesSource() string {
+	if len(r.Messages) > 0 {
+		return "top_level"
+	}
+	if len(r.Input.Messages) > 0 {
+		return "input"
+	}
+	return "missing"
+}
+
 // CoerceBizParams 将 biz_params JSON 转换为 map，兼容对象和各类原始值格式。
 func (r ChatCompletionRequest) CoerceBizParams() map[string]any {
 	rawParams := r.normalizedBizParams()
@@ -89,6 +112,19 @@ func (r ChatCompletionRequest) CoerceBizParams() map[string]any {
 		return map[string]any{"raw": string(rawParams)}
 	}
 	return map[string]any{"raw": raw}
+}
+
+// BizType 从业务参数中提取场景标识，避免日志输出完整 biz_params。
+func (r ChatCompletionRequest) BizType() string {
+	params := r.CoerceBizParams()
+	for _, key := range []string{"biz_type", "scene", "scenario"} {
+		if value, ok := params[key]; ok {
+			if text, ok := value.(string); ok {
+				return strings.TrimSpace(text)
+			}
+		}
+	}
+	return ""
 }
 
 func (r ChatCompletionRequest) normalizedBizParams() json.RawMessage {
