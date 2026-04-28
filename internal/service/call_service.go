@@ -21,6 +21,9 @@ import (
 // providerName 标识目前使用的运营商。
 const providerName = "aliyun_aiccs"
 
+// aliyunOpeningParamKey 对应阿里云开场白变量 ${param}。
+const aliyunOpeningParamKey = "param"
+
 // CallProvider 外呼厂商接口，便于未来扩展（如阿里云、腾讯云）。
 type CallProvider interface {
 	SubmitCall(ctx context.Context, req SubmitCallRequest) (*SubmitCallResult, error)
@@ -188,9 +191,34 @@ func buildProviderBizParams(input map[string]any, bizType string, taskID uuid.UU
 	for key, value := range input {
 		output[key] = value
 	}
+	if !hasNonEmptyStringParam(output, aliyunOpeningParamKey) {
+		if opening := defaultOpeningParam(bizType); opening != "" {
+			output[aliyunOpeningParamKey] = opening
+		}
+	}
 	output["biz_type"] = string(model.NormalizeBizType(bizType))
 	output["task_id"] = taskID.String()
 	return output
+}
+
+func hasNonEmptyStringParam(params map[string]any, key string) bool {
+	value, ok := params[key]
+	if !ok {
+		return false
+	}
+	text, ok := value.(string)
+	return ok && strings.TrimSpace(text) != ""
+}
+
+func defaultOpeningParam(bizType string) string {
+	switch model.NormalizeBizType(bizType) {
+	case model.BizTypeAddressVerify:
+		return "此次致电是想跟您核实服务地址，请您说一下详细地址，尽量具体到门牌号。"
+	case model.BizTypeWorkorderAppointment:
+		return "此次致电是想询问您是否已有师傅跟您预约上门时间。"
+	default:
+		return ""
+	}
 }
 
 // ResolveCallBizParams 按阿里云 call_id/session_id 查询本地任务上下文，供文本网关缺失 biz_params 时兜底。
