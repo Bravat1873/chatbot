@@ -49,7 +49,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	gatewayGroup.Use(middleware.GatewayBearer(deps.GatewayAuthToken))
 	gatewayGroup.POST("/chat/completions", ChatCompletions(deps.Logger, deps.DialogueService, deps.DefaultLLMModel))
 
-	// 内部 API：创建外呼任务（需要 X-Internal-Token 鉴权）
+	// 内部 API：创建外呼任务（需要 Authorization: Bearer 鉴权）
 	internalGroup := router.Group("/internal")
 	internalGroup.Use(middleware.InternalToken(deps.InternalAPIToken))
 	internalGroup.POST("/calls", CreateCallTask(deps.Logger, deps.CallService))

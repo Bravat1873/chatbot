@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -89,7 +90,7 @@ func Load() (Config, error) {
 // Validate 检查必填配置项是否缺失。
 func (c Config) Validate() error {
 	missing := make([]string, 0)
-	for key, value := range map[string]string{
+	required := map[string]string{
 		"ALIYUN_ACCESS_KEY_ID":     c.AliyunAccessKeyID,
 		"ALIYUN_ACCESS_KEY_SECRET": c.AliyunAccessKeySecret,
 		"AICCS_APP_CODE":           c.AICCSAppCode,
@@ -97,15 +98,31 @@ func (c Config) Validate() error {
 		"PG_HOST":                  c.PGHost,
 		"PG_USER":                  c.PGUser,
 		"PG_DATABASE":              c.PGDatabase,
-	} {
+	}
+	if authTokensRequired(c.AppEnv) {
+		required["INTERNAL_API_TOKEN"] = c.InternalAPIToken
+		required["AICCS_CALLBACK_TOKEN"] = c.AICCSCallbackToken
+		required["GATEWAY_AUTH_TOKEN"] = c.GatewayAuthToken
+	}
+	for key, value := range required {
 		if strings.TrimSpace(value) == "" {
 			missing = append(missing, key)
 		}
 	}
 	if len(missing) > 0 {
+		sort.Strings(missing)
 		return fmt.Errorf("missing required env: %s", strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+func authTokensRequired(appEnv string) bool {
+	switch strings.ToLower(strings.TrimSpace(appEnv)) {
+	case "", "dev", "development", "local", "test":
+		return false
+	default:
+		return true
+	}
 }
 
 // PostgresDSN 拼接 pgx 兼容的连接串。

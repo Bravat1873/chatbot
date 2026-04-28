@@ -2,6 +2,7 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
@@ -10,15 +11,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// InternalToken 校验 X-Internal-Token header，用于保护内部 API。
+// InternalToken 校验内部 API 的 Authorization: Bearer <token>。
 func InternalToken(token string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if strings.TrimSpace(token) == "" {
+		expected := strings.TrimSpace(token)
+		if expected == "" {
 			c.Next()
 			return
 		}
-		provided := strings.TrimSpace(c.GetHeader("X-Internal-Token"))
-		if provided != token {
+		provided := parseBearerToken(c.GetHeader("Authorization"))
+		if !tokenMatches(provided, expected) {
 			httpresponse.AbortError(c, http.StatusUnauthorized, httpresponse.CodeUnauthorized, "unauthorized", nil)
 			return
 		}
@@ -29,21 +31,24 @@ func InternalToken(token string) gin.HandlerFunc {
 // CallbackToken 同时校验 Header 和 Query 中的 token，标记认证模式供 handler 使用。
 func CallbackToken(token string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if strings.TrimSpace(token) == "" {
+		expected := strings.TrimSpace(token)
+		if expected == "" {
 			c.Next()
 			return
 		}
 		// 支持 Header（X-Callback-Token）和 Query（?token=）两种传参
-		headerToken := strings.TrimSpace(c.GetHeader("X-Callback-Token"))
-		queryToken := strings.TrimSpace(c.Query("token"))
-		if headerToken != token && queryToken != token {
+		headerToken := c.GetHeader("X-Callback-Token")
+		queryToken := c.Query("token")
+		headerMatched := tokenMatches(headerToken, expected)
+		queryMatched := tokenMatches(queryToken, expected)
+		if !headerMatched && !queryMatched {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "unauthorized"})
 			return
 		}
 		// 记录认证来源，后续 handler 可用
-		if headerToken == token {
+		if headerMatched {
 			c.Set("auth_mode", "header")
-		} else if queryToken == token {
+		} else if queryMatched {
 			c.Set("auth_mode", "query")
 		}
 		c.Next()
@@ -53,16 +58,33 @@ func CallbackToken(token string) gin.HandlerFunc {
 // GatewayBearer 校验 Authorization: Bearer <token>，用于保护 /v1 网关路由。
 func GatewayBearer(token string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if strings.TrimSpace(token) == "" {
+		expected := strings.TrimSpace(token)
+		if expected == "" {
 			c.Next()
 			return
 		}
-		authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
-		provided := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-		if provided != token {
+		provided := parseBearerToken(c.GetHeader("Authorization"))
+		if !tokenMatches(provided, expected) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"detail": "Unauthorized"})
 			return
 		}
 		c.Next()
 	}
+}
+
+func parseBearerToken(authHeader string) string {
+	fields := strings.Fields(authHeader)
+	if len(fields) != 2 || !strings.EqualFold(fields[0], "Bearer") {
+		return ""
+	}
+	return fields[1]
+}
+
+func tokenMatches(provided, expected string) bool {
+	provided = strings.TrimSpace(provided)
+	expected = strings.TrimSpace(expected)
+	if provided == "" || expected == "" || len(provided) != len(expected) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 }
