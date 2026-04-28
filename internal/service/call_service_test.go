@@ -48,33 +48,32 @@ func TestBuildProviderBizParamsInjectsBizTypeAndTaskID(t *testing.T) {
 	params := buildProviderBizParams(map[string]any{
 		"biz_type":      "wrong",
 		"customer_name": "张三",
+		"param":         "开场白变量",
 	}, "address_verify", taskID)
 
 	assert.Equal(t, "address_verify", params["biz_type"])
 	assert.Equal(t, taskID.String(), params["task_id"])
 	assert.Equal(t, "张三", params["customer_name"])
+	assert.NotContains(t, params, "param")
+}
+
+func TestBuildStartWordParamsInjectsAddressOpeningParam(t *testing.T) {
+	params := buildStartWordParams(nil, "address_verify")
+
 	assert.Equal(t, "此次致电是想跟您核实服务地址，请您说一下详细地址，尽量具体到门牌号。", params["param"])
 }
 
-func TestBuildProviderBizParamsInjectsAppointmentOpeningParam(t *testing.T) {
-	taskID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+func TestBuildStartWordParamsInjectsAppointmentOpeningParam(t *testing.T) {
+	params := buildStartWordParams(nil, "workorder_appointment")
 
-	params := buildProviderBizParams(nil, "workorder_appointment", taskID)
-
-	assert.Equal(t, "workorder_appointment", params["biz_type"])
-	assert.Equal(t, taskID.String(), params["task_id"])
 	assert.Equal(t, "此次致电是想询问您是否已有师傅跟您预约上门时间。", params["param"])
 }
 
-func TestBuildProviderBizParamsKeepsExplicitOpeningParam(t *testing.T) {
-	taskID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-
-	params := buildProviderBizParams(map[string]any{
+func TestBuildStartWordParamsKeepsExplicitOpeningParam(t *testing.T) {
+	params := buildStartWordParams(map[string]any{
 		"param": "自定义开场参数",
-	}, "address_verify", taskID)
+	}, "address_verify")
 
-	assert.Equal(t, "address_verify", params["biz_type"])
-	assert.Equal(t, taskID.String(), params["task_id"])
 	assert.Equal(t, "自定义开场参数", params["param"])
 }
 

@@ -36,6 +36,7 @@ type SubmitCallRequest struct {
 	ApplicationCode      string
 	SessionTimeoutSecond int
 	BizParams            map[string]any
+	StartWordParams      map[string]any
 }
 
 // SubmitCallResult 外呼响应结果。
@@ -135,6 +136,7 @@ func (s *CallService) CreateCallTask(ctx context.Context, req model.CreateCallTa
 		s.logger.Info("call_submit_started", "task_id", task.TaskID.String())
 	}
 	providerBizParams := buildProviderBizParams(req.BizParams, bizType, task.TaskID)
+	startWordParams := buildStartWordParams(req.BizParams, bizType)
 	// 提交到阿里云 AICCS
 	result, err := s.provider.SubmitCall(ctx, SubmitCallRequest{
 		CalledNumber:         req.CalledNumber,
@@ -142,6 +144,7 @@ func (s *CallService) CreateCallTask(ctx context.Context, req model.CreateCallTa
 		ApplicationCode:      s.appCode,
 		SessionTimeoutSecond: s.sessionTimeout,
 		BizParams:            providerBizParams,
+		StartWordParams:      startWordParams,
 	})
 	// 提交失败：回写失败状态
 	if err != nil {
@@ -191,23 +194,35 @@ func buildProviderBizParams(input map[string]any, bizType string, taskID uuid.UU
 	for key, value := range input {
 		output[key] = value
 	}
-	if !hasNonEmptyStringParam(output, aliyunOpeningParamKey) {
-		if opening := defaultOpeningParam(bizType); opening != "" {
-			output[aliyunOpeningParamKey] = opening
-		}
-	}
+	delete(output, aliyunOpeningParamKey)
 	output["biz_type"] = string(model.NormalizeBizType(bizType))
 	output["task_id"] = taskID.String()
 	return output
 }
 
-func hasNonEmptyStringParam(params map[string]any, key string) bool {
+func buildStartWordParams(input map[string]any, bizType string) map[string]any {
+	output := map[string]any{}
+	if param, ok := nonEmptyStringParam(input, aliyunOpeningParamKey); ok {
+		output[aliyunOpeningParamKey] = param
+		return output
+	}
+	if opening := defaultOpeningParam(bizType); opening != "" {
+		output[aliyunOpeningParamKey] = opening
+	}
+	return output
+}
+
+func nonEmptyStringParam(params map[string]any, key string) (string, bool) {
 	value, ok := params[key]
 	if !ok {
-		return false
+		return "", false
 	}
 	text, ok := value.(string)
-	return ok && strings.TrimSpace(text) != ""
+	if !ok {
+		return "", false
+	}
+	text = strings.TrimSpace(text)
+	return text, text != ""
 }
 
 func defaultOpeningParam(bizType string) string {

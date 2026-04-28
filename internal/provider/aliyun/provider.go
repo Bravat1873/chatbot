@@ -39,25 +39,10 @@ func New(config Config) (*Provider, error) {
 
 // SubmitCall 调用 LlmSmartCall API 发起外呼。
 func (p *Provider) SubmitCall(ctx context.Context, req service.SubmitCallRequest) (*service.SubmitCallResult, error) {
-	commonRequest := requests.NewCommonRequest()
-	commonRequest.Method = requests.POST
-	commonRequest.Scheme = "https"
-	commonRequest.Domain = p.config.Endpoint
-	commonRequest.Version = "2019-10-15"
-	commonRequest.ApiName = "LlmSmartCall"
-	commonRequest.Product = "aiccs"
-	commonRequest.QueryParams["CalledNumber"] = req.CalledNumber
-	commonRequest.QueryParams["CallerNumber"] = req.CallerNumber
-	commonRequest.QueryParams["ApplicationCode"] = req.ApplicationCode
-	commonRequest.QueryParams["SessionTimeout"] = fmt.Sprintf("%d", req.SessionTimeoutSecond)
-	if len(req.BizParams) > 0 {
-		encodedBizParams, err := json.Marshal(req.BizParams)
-		if err != nil {
-			return nil, fmt.Errorf("marshal biz params: %w", err)
-		}
-		commonRequest.QueryParams["BizParam"] = string(encodedBizParams)
+	commonRequest, err := buildLlmSmartCallRequest(p.config, req)
+	if err != nil {
+		return nil, err
 	}
-
 	_ = ctx
 	response, err := p.client.ProcessCommonRequest(commonRequest)
 	if err != nil {
@@ -79,6 +64,35 @@ func (p *Provider) SubmitCall(ctx context.Context, req service.SubmitCallRequest
 		return nil, fmt.Errorf("aliyun llm smart call returned empty call id")
 	}
 	return &service.SubmitCallResult{CallID: callID, RawResponse: raw}, nil
+}
+
+func buildLlmSmartCallRequest(config Config, req service.SubmitCallRequest) (*requests.CommonRequest, error) {
+	commonRequest := requests.NewCommonRequest()
+	commonRequest.Method = requests.POST
+	commonRequest.Scheme = "https"
+	commonRequest.Domain = config.Endpoint
+	commonRequest.Version = "2019-10-15"
+	commonRequest.ApiName = "LlmSmartCall"
+	commonRequest.Product = "aiccs"
+	commonRequest.QueryParams["CalledNumber"] = req.CalledNumber
+	commonRequest.QueryParams["CallerNumber"] = req.CallerNumber
+	commonRequest.QueryParams["ApplicationCode"] = req.ApplicationCode
+	commonRequest.QueryParams["SessionTimeout"] = fmt.Sprintf("%d", req.SessionTimeoutSecond)
+	if len(req.BizParams) > 0 {
+		encodedBizParams, err := json.Marshal(req.BizParams)
+		if err != nil {
+			return nil, fmt.Errorf("marshal biz params: %w", err)
+		}
+		commonRequest.QueryParams["BizParam"] = string(encodedBizParams)
+	}
+	if len(req.StartWordParams) > 0 {
+		encodedStartWordParams, err := json.Marshal(req.StartWordParams)
+		if err != nil {
+			return nil, fmt.Errorf("marshal start word params: %w", err)
+		}
+		commonRequest.QueryParams["StartWordParam"] = string(encodedStartWordParams)
+	}
+	return commonRequest, nil
 }
 
 // llmSmartCallResponse 阿里云 LlmSmartCall 返回结构。
