@@ -86,14 +86,15 @@ func main() {
 	}
 	dialogueService := service.NewDialogueService(dialogueOptions...)
 	router := handler.NewRouter(handler.RouterDeps{
-		Logger:           logger,
-		CallService:      callService,
-		CallbackService:  callService,
-		DialogueService:  dialogueService,
-		InternalAPIToken: cfg.InternalAPIToken,
-		CallbackAPIToken: cfg.AICCSCallbackToken,
-		GatewayAuthToken: cfg.GatewayAuthToken,
-		DefaultLLMModel:  cfg.LLMModel,
+		Logger:              logger,
+		CallService:         callService,
+		CallbackService:     callService,
+		CallContextResolver: callService,
+		DialogueService:     dialogueService,
+		InternalAPIToken:    cfg.InternalAPIToken,
+		CallbackAPIToken:    cfg.AICCSCallbackToken,
+		GatewayAuthToken:    cfg.GatewayAuthToken,
+		DefaultLLMModel:     cfg.LLMModel,
 		HealthCheck: func(ctx context.Context) error {
 			return pool.Ping(ctx) // 健康检查：ping 数据库
 		},

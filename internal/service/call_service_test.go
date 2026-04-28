@@ -54,3 +54,20 @@ func TestBuildProviderBizParamsInjectsBizTypeAndTaskID(t *testing.T) {
 	assert.Equal(t, taskID.String(), params["task_id"])
 	assert.Equal(t, "张三", params["customer_name"])
 }
+
+func TestBuildCallTaskBizParamsInjectsStoredContext(t *testing.T) {
+	taskID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	callID := "call-123"
+	params, err := buildCallTaskBizParams(&model.CallTask{
+		TaskID:    taskID,
+		BizType:   "address_verify",
+		BizParams: []byte(`{"order_id":"ADDR-001","biz_type":"wrong"}`),
+		CallID:    &callID,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "address_verify", params["biz_type"])
+	assert.Equal(t, "ADDR-001", params["order_id"])
+	assert.Equal(t, taskID.String(), params["task_id"])
+	assert.Equal(t, callID, params["call_id"])
+}

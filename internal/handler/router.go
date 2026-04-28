@@ -22,17 +22,23 @@ type CallbackService interface {
 	HandleCallReport(ctx context.Context, payload map[string]any, rawPayload json.RawMessage, sourceIP, authMode string) (duplicate bool, matched bool, err error)
 }
 
+// CallContextResolver 定义按 call_id 查找外呼任务上下文的接口，供文本网关缺失 biz_params 时兜底。
+type CallContextResolver interface {
+	ResolveCallBizParams(ctx context.Context, callID string) (map[string]any, bool, error)
+}
+
 // RouterDeps 聚合所有路由所需的依赖，便于测试时替换。
 type RouterDeps struct {
-	Logger           *slog.Logger
-	CallService      CallService
-	CallbackService  CallbackService
-	DialogueService  DialogueService
-	InternalAPIToken string
-	CallbackAPIToken string
-	GatewayAuthToken string
-	DefaultLLMModel  string
-	HealthCheck      func(context.Context) error
+	Logger              *slog.Logger
+	CallService         CallService
+	CallbackService     CallbackService
+	CallContextResolver CallContextResolver
+	DialogueService     DialogueService
+	InternalAPIToken    string
+	CallbackAPIToken    string
+	GatewayAuthToken    string
+	DefaultLLMModel     string
+	HealthCheck         func(context.Context) error
 }
 
 // NewRouter 创建 gin Engine，注册全局中间件和业务路由分组。
@@ -47,7 +53,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	// 文本网关：兼容 OpenAI / 阿里云大模型网关 SSE 协议
 	gatewayGroup := router.Group("/v1")
 	gatewayGroup.Use(middleware.GatewayBearer(deps.GatewayAuthToken))
-	gatewayGroup.POST("/chat/completions", ChatCompletions(deps.Logger, deps.DialogueService, deps.DefaultLLMModel))
+	gatewayGroup.POST("/chat/completions", ChatCompletions(deps.Logger, deps.DialogueService, deps.DefaultLLMModel, deps.CallContextResolver))
 
 	// 内部 API：创建外呼任务（需要 Authorization: Bearer 鉴权）
 	internalGroup := router.Group("/internal")

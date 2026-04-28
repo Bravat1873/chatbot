@@ -193,6 +193,47 @@ func buildProviderBizParams(input map[string]any, bizType string, taskID uuid.UU
 	return output
 }
 
+// ResolveCallBizParams 按阿里云 call_id/session_id 查询本地任务上下文，供文本网关缺失 biz_params 时兜底。
+func (s *CallService) ResolveCallBizParams(ctx context.Context, callID string) (map[string]any, bool, error) {
+	callID = strings.TrimSpace(callID)
+	if callID == "" || s == nil || s.callTaskRepo == nil {
+		return nil, false, nil
+	}
+	task, err := s.callTaskRepo.GetByCallID(ctx, callID)
+	if err != nil {
+		return nil, false, err
+	}
+	if task == nil {
+		return nil, false, nil
+	}
+	bizParams, err := buildCallTaskBizParams(task)
+	if err != nil {
+		return nil, false, err
+	}
+	return bizParams, true, nil
+}
+
+func buildCallTaskBizParams(task *model.CallTask) (map[string]any, error) {
+	output := map[string]any{}
+	if task == nil {
+		return output, nil
+	}
+	if len(task.BizParams) > 0 && string(task.BizParams) != "null" {
+		if err := json.Unmarshal(task.BizParams, &output); err != nil {
+			return nil, fmt.Errorf("decode task biz params: %w", err)
+		}
+		if output == nil {
+			output = map[string]any{}
+		}
+	}
+	output["biz_type"] = string(model.NormalizeBizType(task.BizType))
+	output["task_id"] = task.TaskID.String()
+	if task.CallID != nil {
+		output["call_id"] = *task.CallID
+	}
+	return output, nil
+}
+
 // HandleCallReport 处理运营商回调报告：归一化载荷 -> 状态推导 -> 仓库事务写入。
 func (s *CallService) HandleCallReport(ctx context.Context, payload map[string]any, rawPayload json.RawMessage, sourceIP, authMode string) (duplicate bool, matched bool, err error) {
 	normalized, err := normalizePayload(payload)
